@@ -59,4 +59,20 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended:1.6.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.0")
+
+    // --- Mapa (OSMDroid — OpenStreetMap, sem API key, Maven Central) ---
+    // NOTA: Quando tiveres o token Mapbox, substitui por:
+    //   implementation("com.mapbox.maps:android:11.5.2")
+    //   implementation("com.mapbox.extension:maps-compose:11.5.2")
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
+
+    // --- Coroutines ---
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // --- Retrofit + Gson (para chamadas HTTP à Open-Meteo API) ---
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+
+    // --- Localização (FusedLocationProvider) ---
+    implementation("com.google.android.gms:play-services-location:21.0.1")
 }

@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">VitalRoute</string>
+    <!-- Token Mapbox (para ativar quando tiveres conta em account.mapbox.com) -->
+    <!-- <string name="mapbox_access_token">YOUR_MAPBOX_PUBLIC_TOKEN_HERE</string> -->
 </resources>
