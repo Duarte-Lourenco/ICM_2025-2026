@@ -2,35 +2,55 @@ package com.studio.vitalroute.ui.maps
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.studio.vitalroute.data.api.OverpassRetrofit
 import com.studio.vitalroute.data.api.WeatherRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.osmdroid.util.GeoPoint
 
 // ─────────────────────────────────────────────────────────────
-//  Estado da UI — tudo o que o ecrã de Mapas precisa de saber
+//  Camadas de mapa disponíveis
+// ─────────────────────────────────────────────────────────────
+
+enum class MapLayer { STANDARD, CYCLING }
+
+// ─────────────────────────────────────────────────────────────
+//  Modelos de dados da UI
 // ─────────────────────────────────────────────────────────────
 
 data class WeatherInfo(
-    val temperature: String,    // ex: "18°C"
-    val condition: String,      // ex: "Céu limpo"
-    val humidity: String,       // ex: "Humidade: 65%"
-    val wind: String            // ex: "Vento: 12 km/h"
+    val temperature: String,
+    val condition: String,
+    val humidity: String,
+    val wind: String
+)
+
+data class CyclingPath(
+    val points: List<GeoPoint>,
+    val name: String = ""
 )
 
 data class MapsUiState(
-    val isLoading: Boolean = false,
+    // Meteo
+    val isLoadingWeather: Boolean = true,
     val weatherInfo: WeatherInfo? = null,
-    val errorMessage: String? = null,
-    // Coordenadas do centro do mapa (default: Aveiro)
+    val weatherError: String? = null,
+    // Percursos
+    val isLoadingPaths: Boolean = false,
+    val cyclingPaths: List<CyclingPath> = emptyList(),
+    val pathsLoaded: Boolean = false,
+    val pathsError: String? = null,
+    // Mapa
+    val selectedLayer: MapLayer = MapLayer.CYCLING,
     val centerLat: Double = 40.6405,
     val centerLon: Double = -8.6568
 )
 
 // ─────────────────────────────────────────────────────────────
-//  MapsViewModel — gere o estado e as operações assíncronas
+//  MapsViewModel
 // ─────────────────────────────────────────────────────────────
 
 class MapsViewModel : ViewModel() {
@@ -39,36 +59,26 @@ class MapsViewModel : ViewModel() {
     val uiState: StateFlow<MapsUiState> = _uiState.asStateFlow()
 
     private val weatherRepository = WeatherRepository()
+    private val overpassService = OverpassRetrofit.service
 
-    // Busca o tempo assim que o ViewModel é criado
     init {
         fetchWeather()
     }
 
-    /**
-     * Lança uma coroutine no viewModelScope para chamar a API de forma
-     * assíncrona sem bloquear a thread principal (Main Thread).
-     *
-     * viewModelScope é automaticamente cancelado quando o ViewModel
-     * é destruído → sem memory leaks.
-     */
+    // ── Meteorologia ─────────────────────────────────────────
+
     fun fetchWeather(
         lat: Double = _uiState.value.centerLat,
         lon: Double = _uiState.value.centerLon
     ) {
         viewModelScope.launch {
-            // 1. Mostrar loading
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-
+            _uiState.update { it.copy(isLoadingWeather = true, weatherError = null) }
             try {
-                // 2. Chamada suspensa à API (corre em IO thread via Retrofit)
                 val response = weatherRepository.getCurrentWeather(lat, lon)
                 val data = response.current
-
-                // 3. Atualizar estado com os dados recebidos
                 _uiState.update {
                     it.copy(
-                        isLoading = false,
+                        isLoadingWeather = false,
                         weatherInfo = WeatherInfo(
                             temperature = "%.1f°C".format(data.temperature_2m),
                             condition   = weatherRepository.weatherCodeToDescription(data.weather_code),
@@ -78,14 +88,74 @@ class MapsViewModel : ViewModel() {
                     )
                 }
             } catch (e: Exception) {
-                // 4. Tratar erros (sem internet, timeout, etc.)
+                _uiState.update { it.copy(isLoadingWeather = false, weatherError = "Sem dados meteo") }
+            }
+        }
+    }
+
+    // ── Ciclovias via Overpass API ───────────────────────────
+
+    /**
+     * Consulta a Overpass API (OpenStreetMap) para buscar ciclovias
+     * num raio de 3 km à volta da posição dada.
+     *
+     * Query Overpass QL:
+     *  - highway=cycleway → ciclovias dedicadas
+     *  - highway=path + bicycle=designated/yes → trilhos ciclável
+     *  - highway=track + bicycle=yes → caminhos rurais cicláveis
+     */
+    fun fetchCyclingPaths(lat: Double, lon: Double) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingPaths = true, pathsError = null) }
+            try {
+                val query = """
+                    [out:json][timeout:25];
+                    (
+                      way["highway"="cycleway"](around:3000,$lat,$lon);
+                      way["highway"="path"]["bicycle"="designated"](around:3000,$lat,$lon);
+                      way["highway"="path"]["bicycle"="yes"](around:3000,$lat,$lon);
+                      way["highway"="track"]["bicycle"="yes"](around:3000,$lat,$lon);
+                    );
+                    out geom;
+                """.trimIndent()
+
+                val response = overpassService.query(query)
+
+                val paths = response.elements.mapNotNull { element ->
+                    val geom = element.geometry ?: return@mapNotNull null
+                    if (geom.size < 2) return@mapNotNull null
+                    CyclingPath(
+                        points = geom.map { GeoPoint(it.lat, it.lon) },
+                        name   = element.tags?.get("name") ?: ""
+                    )
+                }
+
                 _uiState.update {
                     it.copy(
-                        isLoading = false,
-                        errorMessage = "Sem dados meteorológicos"
+                        isLoadingPaths = false,
+                        cyclingPaths   = paths,
+                        pathsLoaded    = true,
+                        pathsError     = if (paths.isEmpty()) "Nenhuma ciclovia encontrada aqui" else null
                     )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isLoadingPaths = false, pathsError = "Erro ao carregar ciclovias")
                 }
             }
         }
+    }
+
+    // ── Camada do mapa ────────────────────────────────────────
+
+    fun setLayer(layer: MapLayer) {
+        _uiState.update { it.copy(selectedLayer = layer) }
+    }
+
+    // ── Centro do mapa ────────────────────────────────────────
+
+    fun updateCenter(lat: Double, lon: Double) {
+        _uiState.update { it.copy(centerLat = lat, centerLon = lon) }
+        fetchWeather(lat, lon)
     }
 }

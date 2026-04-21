@@ -1,15 +1,12 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.studio.vitalroute"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.studio.vitalroute"
@@ -68,6 +65,7 @@ dependencies {
 
     // --- Coroutines ---
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // --- Retrofit + Gson (para chamadas HTTP à Open-Meteo API) ---
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
@@ -75,4 +73,9 @@ dependencies {
 
     // --- Localização (FusedLocationProvider) ---
     implementation("com.google.android.gms:play-services-location:21.0.1")
+
+    // --- Firebase ---
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-firestore-ktx")
 }

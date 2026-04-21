@@ -1,11 +1,13 @@
 package com.studio.vitalroute.ui.maps
 
-import android.preference.PreferenceManager
-import androidx.compose.foundation.background
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.LocationManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,165 +18,269 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.studio.vitalroute.ui.theme.*
 import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
-import com.studio.vitalroute.ui.theme.*
 
 // ─────────────────────────────────────────────────────────────
-//  MapsScreen — Mapa OpenStreetMap + dados da API meteorológica
-//
-//  NOTA: Esta implementação usa OSMDroid (OpenStreetMap), que
-//  funciona sem API key. Para usar Mapbox:
-//   1. Obtém tokens em account.mapbox.com
-//   2. Adiciona MAPBOX_DOWNLOADS_TOKEN a ~/.gradle/gradle.properties
-//   3. Descomentar o repo em settings.gradle.kts
-//   4. Substituir as dependências no build.gradle.kts
-//   5. Substituir AndroidView por MapboxMap composable
+//  MapsScreen — mapa com ciclovias reais e meteorologia
 // ─────────────────────────────────────────────────────────────
 
 @Composable
-fun MapsScreen(
-    viewModel: MapsViewModel = viewModel()
-) {
+fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
+    val context  = LocalContext.current
 
-    // Configura o OSMDroid (user agent obrigatório)
+    // Localização real do dispositivo (fallback: Aveiro)
+    val userLocation = remember {
+        getDeviceLocation(context) ?: GeoPoint(40.6405, -8.6568)
+    }
+
+    // Referência ao MapView para animações imperativas
+    val mapViewRef = remember { mutableStateOf<MapView?>(null) }
+
+    // Ao entrar no ecrã, atualiza o centro e busca meteo
     LaunchedEffect(Unit) {
-        Configuration.getInstance().load(
-            context,
-            PreferenceManager.getDefaultSharedPreferences(context)
-        )
-        Configuration.getInstance().userAgentValue = context.packageName
+        viewModel.updateCenter(userLocation.latitude, userLocation.longitude)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // ── Mapa OSMDroid via AndroidView ─────────────────────
-        // AndroidView integra Views tradicionais do Android no Compose
+        // ── Mapa OSMDroid ─────────────────────────────────────
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
+                Configuration.getInstance().userAgentValue = ctx.packageName
                 MapView(ctx).apply {
-                    // Estilo escuro (USGS Topo como alternativa dark)
-                    setTileSource(TileSourceFactory.MAPNIK)
+                    setTileSource(cyclOSMTileSource())
                     setMultiTouchControls(true)
+                    controller.setZoom(15.0)
+                    controller.setCenter(userLocation)
 
-                    // Posição inicial: Aveiro
-                    controller.setZoom(14.0)
-                    controller.setCenter(GeoPoint(40.6405, -8.6568))
+                    // Ponto azul de localização
+                    val myLocationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
+                    myLocationOverlay.enableMyLocation()
+                    overlays.add(myLocationOverlay)
 
-                    // Overlay de localização (seta de posição atual)
-                    val locationOverlay = MyLocationNewOverlay(
-                        GpsMyLocationProvider(ctx), this
-                    )
-                    locationOverlay.enableMyLocation()
-                    overlays.add(locationOverlay)
+                    mapViewRef.value = this
                 }
             },
-            update = { mapView ->
-                // Chamado sempre que o estado muda — pode animar câmara, etc.
-                mapView.onResume()
-            }
+            update = { map ->
+                // Atualiza tiles conforme camada selecionada
+                val newSource = when (uiState.selectedLayer) {
+                    MapLayer.CYCLING  -> cyclOSMTileSource()
+                    MapLayer.STANDARD -> TileSourceFactory.MAPNIK
+                }
+                map.setTileSource(newSource)
+
+                // Remove polylines antigas e desenha ciclovias novas
+                map.overlays.removeAll { it is Polyline }
+                uiState.cyclingPaths.forEach { path ->
+                    Polyline(map).apply {
+                        setPoints(path.points)
+                        outlinePaint.color       = android.graphics.Color.parseColor("#4CAF50")
+                        outlinePaint.strokeWidth = 9f
+                        outlinePaint.alpha       = 210
+                        map.overlays.add(this)
+                    }
+                }
+                map.invalidate()
+            },
+            modifier = Modifier.fillMaxSize()
         )
 
-        // ── Overlay superior: cabeçalho ──────────────────────────
-        Box(
+        // ── Chips de camada (topo esquerdo) ──────────────────
+        Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .background(Color.Black.copy(alpha = 0.80f))
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 12.dp, top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = "MAPAS & ROTAS",
-                color = Color.White,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 2.sp
+            MapLayerChip(
+                label    = "🗺  Normal",
+                selected = uiState.selectedLayer == MapLayer.STANDARD,
+                onClick  = { viewModel.setLayer(MapLayer.STANDARD) }
+            )
+            MapLayerChip(
+                label    = "🚴  Ciclismo",
+                selected = uiState.selectedLayer == MapLayer.CYCLING,
+                onClick  = { viewModel.setLayer(MapLayer.CYCLING) }
             )
         }
 
-        // ── Card meteorológico (canto superior direito) ──────────
-        Column(
+        // ── Card de meteorologia (topo direito) ──────────────
+        Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 64.dp, end = 16.dp),
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .statusBarsPadding()
+                .padding(end = 12.dp, top = 12.dp)
         ) {
             when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(28.dp),
-                        color = VitalOrange,
-                        strokeWidth = 2.dp
+                uiState.isLoadingWeather -> CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp), color = VitalGreen, strokeWidth = 2.dp
+                )
+                uiState.weatherInfo != null -> WeatherOverlayCard(uiState.weatherInfo!!)
+            }
+        }
+
+        // ── Contador de ciclovias (fundo esquerdo) ────────────
+        if (uiState.pathsLoaded && uiState.cyclingPaths.isNotEmpty()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 12.dp, bottom = 80.dp),
+                color = Color(0xDD111111),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.size(10.dp),
+                        color    = VitalGreen,
+                        shape    = RoundedCornerShape(50)
+                    ) {}
+                    Text(
+                        text       = "${uiState.cyclingPaths.size} ciclovias encontradas",
+                        color      = Color.White,
+                        fontSize   = 13.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
-
-                uiState.weatherInfo != null -> {
-                    WeatherCard(weather = uiState.weatherInfo!!)
-                }
-
-                uiState.errorMessage != null -> {
-                    IconButton(
-                        onClick = { viewModel.fetchWeather() },
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
-                    ) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "Tentar novamente",
-                            tint = VitalOrange
-                        )
-                    }
-                }
             }
+        }
+
+        // ── Mensagem de erro (fundo centro) ──────────────────
+        uiState.pathsError?.let { err ->
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 80.dp),
+                color = Color(0xDD1A0000),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text     = err,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color    = Color(0xFFFF6B6B),
+                    fontSize = 13.sp
+                )
+            }
+        }
+
+        // ── FAB localização (fundo direito) ──────────────────
+        FloatingActionButton(
+            onClick        = { mapViewRef.value?.controller?.animateTo(userLocation, 16.0, 800L) },
+            modifier       = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(end = 12.dp, bottom = 80.dp),
+            containerColor = Color(0xFF1E1E1E),
+            contentColor   = Color.White,
+            shape          = RoundedCornerShape(14.dp)
+        ) {
+            Icon(Icons.Default.MyLocation, contentDescription = "A minha localização")
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Card com dados meteorológicos — chamada à Open-Meteo API
+//  Componentes privados
 // ─────────────────────────────────────────────────────────────
 
 @Composable
-private fun WeatherCard(weather: WeatherInfo) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.85f)),
-        elevation = CardDefaults.cardElevation(4.dp)
+private fun MapLayerChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick         = onClick,
+        color           = if (selected) VitalGreen else Color(0xDD111111),
+        contentColor    = if (selected) Color.Black else Color.White,
+        shape           = RoundedCornerShape(20.dp),
+        shadowElevation = 4.dp
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
+        Text(
+            text       = label,
+            modifier   = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal,
+            fontSize   = 13.sp
+        )
+    }
+}
+
+@Composable
+private fun WeatherOverlayCard(weather: WeatherInfo) {
+    Surface(
+        color = Color(0xDD111111),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = weather.temperature,
-                color = VitalOrange,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.ExtraBold
+                text       = weather.temperature,
+                color      = Color.White,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize   = 18.sp
             )
-            Text(
-                text = weather.condition,
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-            HorizontalDivider(
-                color = Color.DarkGray,
-                thickness = 0.5.dp,
-                modifier = Modifier.padding(vertical = 2.dp)
-            )
-            Text(text = weather.humidity, color = Color.Gray, fontSize = 11.sp)
-            Text(text = weather.wind, color = Color.Gray, fontSize = 11.sp)
+            Text(text = weather.condition, color = Color.Gray, fontSize = 11.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(weather.humidity, color = Color.Gray, fontSize = 11.sp)
+            Text(weather.wind,     color = Color.Gray, fontSize = 11.sp)
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Helpers
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * CyclOSM — camada gratuita especializada em ciclismo.
+ * Mostra ciclovias, trilhos e infra-estrutura ciclável com cores próprias.
+ * Sem API key necessária.
+ */
+private fun cyclOSMTileSource(): OnlineTileSourceBase =
+    object : OnlineTileSourceBase(
+        "CyclOSM", 1, 19, 256, ".png",
+        arrayOf(
+            "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/",
+            "https://b.tile-cyclosm.openstreetmap.fr/cyclosm/",
+            "https://c.tile-cyclosm.openstreetmap.fr/cyclosm/"
+        )
+    ) {
+        override fun getTileURLString(pMapTileIndex: Long): String =
+            baseUrl +
+            MapTileIndex.getZoom(pMapTileIndex) + "/" +
+            MapTileIndex.getX(pMapTileIndex)    + "/" +
+            MapTileIndex.getY(pMapTileIndex)    + mImageFilenameEnding
+    }
+
+/**
+ * Tenta obter a última localização conhecida do dispositivo.
+ * Requer ACCESS_FINE_LOCATION (declarada no AndroidManifest.xml).
+ * Devolve null se a permissão não estiver concedida ou não houver fix GPS.
+ */
+private fun getDeviceLocation(context: Context): GeoPoint? = try {
+    val granted = ContextCompat.checkSelfPermission(
+        context, Manifest.permission.ACCESS_FINE_LOCATION
+    ) == PackageManager.PERMISSION_GRANTED
+
+    if (!granted) null
+    else {
+        val lm  = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+        loc?.let { GeoPoint(it.latitude, it.longitude) }
+    }
+} catch (e: Exception) { null }

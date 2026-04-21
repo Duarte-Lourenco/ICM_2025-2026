@@ -8,7 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -16,37 +16,23 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.studio.vitalroute.ui.components.SectionHeader
 import com.studio.vitalroute.ui.theme.*
-
-// ─────────────────────────────────────────────────────────────
-//  Modelos de dados locais
-// ─────────────────────────────────────────────────────────────
-
-private data class ActivityEntry(
-    val type: String,
-    val date: String,
-    val period: String,
-    val dist: String,
-    val duration: String,
-    val speed: String,
-    val elevation: String
-)
-
-private val sampleActivities = listOf(
-    ActivityEntry("Ciclismo", "Terça, 10 Mar",    "Fim de Tarde", "45.2 km", "1h 22m", "22 km/h", "320 m"),
-    ActivityEntry("Ciclismo", "Domingo, 8 Mar",   "Manhã",        "32.1 km", "58 min",  "19 km/h", "180 m"),
-    ActivityEntry("Corrida",  "Sábado, 5 Mar",    "Tarde",        "12.8 km", "1h 05m", "12 km/h",  "85 m"),
-    ActivityEntry("Ciclismo", "Quarta, 1 Mar",    "Noite",        "67.8 km", "2h 10m", "31 km/h", "560 m")
-)
-
-// ─────────────────────────────────────────────────────────────
-//  Ecrã principal
-// ─────────────────────────────────────────────────────────────
+import java.text.SimpleDateFormat
+import java.util.*
 
 @Composable
-fun DiaryScreen(navController: NavHostController) {
+fun DiaryScreen(
+    navController: NavHostController,
+    viewModel: DiaryViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val monthLabel = SimpleDateFormat("MMMM yyyy", Locale("pt", "PT"))
+        .format(Date()).replaceFirstChar { it.uppercaseChar() }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -68,7 +54,7 @@ fun DiaryScreen(navController: NavHostController) {
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.ExtraBold
                 )
-                Text("Março 2025", color = Color.Gray, fontSize = 13.sp)
+                Text(monthLabel, color = Color.Gray, fontSize = 13.sp)
             }
             IconButton(onClick = { navController.navigate("settings") }) {
                 Icon(Icons.Default.Settings, null, tint = Color.Gray, modifier = Modifier.size(24.dp))
@@ -77,63 +63,93 @@ fun DiaryScreen(navController: NavHostController) {
 
         Spacer(Modifier.height(24.dp))
 
-        // ── Resumo do mês ─────────────────────────────────────
-        SectionHeader("RESUMO DO MÊS")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = CardGray),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    MonthStat("🚴", "340 km",   "Distância")
-                    VerticalDivider(modifier = Modifier.height(52.dp), color = Color(0xFF2A2A2A))
-                    MonthStat("⛰️", "4.200 m",  "Elevação")
-                }
-                Spacer(Modifier.height(16.dp))
-                HorizontalDivider(color = Color(0xFF2A2A2A))
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    MonthStat("⏱️", "14h 20m",  "Ativo")
-                    VerticalDivider(modifier = Modifier.height(52.dp), color = Color(0xFF2A2A2A))
-                    MonthStat("🛡️", "0",        "Incidentes")
+        if (uiState.isLoading) {
+            Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = VitalGreen)
+            }
+        } else {
+
+            // ── Resumo do mês ─────────────────────────────────
+            SectionHeader("RESUMO DO MÊS")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = CardGray),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                val s = uiState.monthlySummary
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        MonthStat("🚴", "${s.totalKm} km", "Distância")
+                        VerticalDivider(modifier = Modifier.height(52.dp), color = Color(0xFF2A2A2A))
+                        MonthStat("⛰️", "${s.totalElevation} m", "Elevação")
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider(color = Color(0xFF2A2A2A))
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        MonthStat("⏱️", "${s.totalMinutes} min", "Ativo")
+                        VerticalDivider(modifier = Modifier.height(52.dp), color = Color(0xFF2A2A2A))
+                        MonthStat("🛡️", s.incidents, "Incidentes")
+                    }
                 }
             }
-        }
 
-        Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(28.dp))
 
-        // ── Recordes pessoais ─────────────────────────────────
-        SectionHeader("RECORDES PESSOAIS")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = CardGray),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                PersonalBestRow(Icons.Default.Straighten, "Distância Máxima",  "87.3 km",   "5 Mar 2025")
-                HorizontalDivider(color = Color(0xFF2A2A2A))
-                PersonalBestRow(Icons.Default.Speed,      "Velocidade Máxima", "38.2 km/h", "10 Mar 2025")
-                HorizontalDivider(color = Color(0xFF2A2A2A))
-                PersonalBestRow(Icons.Default.Timer,      "Maior Duração",     "3h 45m",    "22 Fev 2025")
-                HorizontalDivider(color = Color(0xFF2A2A2A))
-                PersonalBestRow(Icons.Default.Terrain,    "Maior Elevação",    "1.240 m",   "1 Mar 2025")
+            // ── Recordes pessoais ─────────────────────────────
+            SectionHeader("RECORDES PESSOAIS")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = CardGray),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                val pb = uiState.personalBests
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    PersonalBestRow(Icons.Default.Straighten, "Distância Máxima",  pb.longestRide)
+                    HorizontalDivider(color = Color(0xFF2A2A2A))
+                    PersonalBestRow(Icons.Default.Speed,      "Velocidade Máxima", pb.topSpeed)
+                    HorizontalDivider(color = Color(0xFF2A2A2A))
+                    PersonalBestRow(Icons.Default.Timer,      "Maior Duração",     pb.longestDuration)
+                    HorizontalDivider(color = Color(0xFF2A2A2A))
+                    PersonalBestRow(Icons.Default.Terrain,    "Maior Elevação",    pb.mostElevation)
+                }
             }
-        }
 
-        Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(28.dp))
 
-        // ── Histórico de atividades ───────────────────────────
-        SectionHeader("HISTÓRICO")
-        sampleActivities.forEach { activity ->
-            ActivityCard(activity)
-            Spacer(Modifier.height(8.dp))
+            // ── Histórico de atividades ───────────────────────
+            SectionHeader("HISTÓRICO")
+
+            if (uiState.activities.isEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = CardGray),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("🚴", fontSize = 36.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Nenhuma atividade ainda",
+                            color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Começa a gravar para ver o teu histórico aqui.",
+                            color = Color.Gray, fontSize = 12.sp)
+                    }
+                }
+            } else {
+                uiState.activities.forEach { activity ->
+                    ActivityCard(activity)
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
         }
 
         Spacer(Modifier.height(32.dp))
@@ -155,11 +171,9 @@ private fun MonthStat(emoji: String, value: String, label: String) {
 }
 
 @Composable
-private fun PersonalBestRow(icon: ImageVector, label: String, value: String, date: String) {
+private fun PersonalBestRow(icon: ImageVector, label: String, value: String) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 14.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -171,23 +185,20 @@ private fun PersonalBestRow(icon: ImageVector, label: String, value: String, dat
             Icon(icon, null, tint = VitalOrange, modifier = Modifier.size(18.dp))
         }
         Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text(date, color = Color.Gray, fontSize = 11.sp)
-        }
+        Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f))
         Text(value, color = VitalOrange, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
     }
 }
 
 @Composable
-private fun ActivityCard(activity: ActivityEntry) {
+private fun ActivityCard(activity: ActivityUiItem) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = CardGray),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Cabeçalho do card
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -195,27 +206,28 @@ private fun ActivityCard(activity: ActivityEntry) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = if (activity.type == "Corrida") Icons.Default.DirectionsRun
+                        imageVector = if (activity.type == "running") Icons.Default.DirectionsRun
                                       else Icons.Default.DirectionsBike,
                         contentDescription = null,
                         tint = VitalOrange,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(activity.type, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (activity.type == "running") "Corrida" else "Ciclismo",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-                Text(activity.period, color = Color.Gray, fontSize = 11.sp)
+                Text(activity.timeLabel, color = Color.Gray, fontSize = 11.sp)
             }
-            Text(activity.date, color = Color.Gray, fontSize = 11.sp)
-
+            Text(activity.dateLabel, color = Color.Gray, fontSize = 11.sp)
             Spacer(Modifier.height(12.dp))
-
-            // Métricas em linha
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                ActivityMetric("📏", activity.dist,     "Distância")
-                ActivityMetric("⏱️", activity.duration, "Duração")
-                ActivityMetric("⚡", activity.speed,    "Veloc.")
-                ActivityMetric("⛰️", activity.elevation,"Elevação")
+                ActivityMetric("📏", activity.distance,  "Distância")
+                ActivityMetric("⏱️", activity.duration,  "Duração")
+                ActivityMetric("⚡", activity.speed,     "Veloc.")
+                ActivityMetric("⛰️", activity.elevation, "Elevação")
             }
         }
     }

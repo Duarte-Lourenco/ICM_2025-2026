@@ -30,6 +30,7 @@ import com.studio.vitalroute.ui.components.SectionHeader
 @Composable
 fun SettingsScreen(
     navController: NavHostController,
+    onSignOut: () -> Unit = {},
     viewModel: SettingsViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -91,7 +92,7 @@ fun SettingsScreen(
             }
 
             Spacer(modifier = Modifier.height(48.dp))
-            Text("Terminar Sessão", color = Color.Red, modifier = Modifier.fillMaxWidth().clickable { }, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
+            Text("Terminar Sessão", color = Color.Red, modifier = Modifier.fillMaxWidth().clickable { onSignOut() }, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
             Text("Versão 1.0.4 - VitalRoute", color = Color.DarkGray, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 10.sp)
             Spacer(modifier = Modifier.height(40.dp))

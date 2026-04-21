@@ -38,7 +38,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 }
 
 @Composable
-fun VitalRouteNavGraph() {
+fun VitalRouteNavGraph(onSignOut: () -> Unit = {}) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -62,7 +62,7 @@ fun VitalRouteNavGraph() {
             composable(Screen.Iniciar.route) { RecordingScreen() }
             composable(Screen.Seguranca.route) { SecurityScreen() }
             composable(Screen.Perfil.route) { DiaryScreen(navController) }
-            composable("settings") { SettingsScreen(navController) }
+            composable("settings") { SettingsScreen(navController, onSignOut = onSignOut) }
         }
     }
 }

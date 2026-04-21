@@ -42,7 +42,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
             Column {
                 Text(text = uiState.greeting, color = Color.Gray, fontSize = 13.sp)
                 Text(
-                    text = "Duarte",
+                    text = uiState.userName.ifBlank { "Atleta" },
                     color = Color.White,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold
@@ -125,7 +125,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
                     WeekStat("🛡️", uiState.weeklyIncidents, "incid.")
                 }
                 Spacer(Modifier.height(16.dp))
-                val progress = (uiState.weeklyKm.toFloatOrNull() ?: 0f) / uiState.weeklyGoalKm
+                val progress = uiState.weeklyGoalProgress
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween

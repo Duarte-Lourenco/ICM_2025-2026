@@ -2,6 +2,8 @@ package com.studio.vitalroute.ui.recording
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.studio.vitalroute.data.firebase.FirestoreRepository
+import com.studio.vitalroute.data.model.Activity
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,29 +35,58 @@ class RecordingViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(RecordingUiState())
     val uiState: StateFlow<RecordingUiState> = _uiState.asStateFlow()
 
+    private val repository = FirestoreRepository()
+
     // Referência ao Job do cronómetro para poder cancelá-lo
     private var timerJob: Job? = null
     private var elapsedSeconds = 0L
+    private var startTimeMs = 0L
 
     // ── Eventos da UI ─────────────────────────────────────────
 
     fun startRecording() {
+        startTimeMs = System.currentTimeMillis()
         _uiState.update { it.copy(isRecording = true) }
         startTimer()
     }
 
     fun stopRecording() {
-        // Cancela a coroutine do timer
+        val endTimeMs = System.currentTimeMillis()
         timerJob?.cancel()
+
+        // Guarda a atividade no Firestore antes de limpar o estado
+        val current = _uiState.value
+        if (elapsedSeconds >= 10) { // só guarda se durou pelo menos 10 segundos
+            viewModelScope.launch {
+                try {
+                    repository.saveActivity(
+                        Activity(
+                            type            = "cycling",
+                            startTime       = startTimeMs,
+                            endTime         = endTimeMs,
+                            distanceKm      = current.distance.toDoubleOrNull() ?: 0.0,
+                            durationSeconds = elapsedSeconds,
+                            avgSpeedKmh     = current.speed.toDoubleOrNull() ?: 0.0,
+                            elevationM      = current.elevation.toIntOrNull() ?: 0,
+                            calories        = current.calories.toIntOrNull() ?: 0
+                        )
+                    )
+                } catch (e: Exception) {
+                    // Silencioso — o utilizador pode não estar autenticado ainda
+                }
+            }
+        }
+
         elapsedSeconds = 0L
+        startTimeMs    = 0L
         _uiState.update {
             it.copy(
                 isRecording = false,
                 elapsedTime = "00:00:00",
-                distance = "0.00",
-                speed = "0.0",
-                elevation = "0",
-                calories = "0"
+                distance    = "0.00",
+                speed       = "0.0",
+                elevation   = "0",
+                calories    = "0"
             )
         }
     }
