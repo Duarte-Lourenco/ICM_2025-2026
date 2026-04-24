@@ -2,10 +2,40 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permissões necessárias -->
+    <!-- Rede -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Localização (necessária para BLE scan em Android < 12) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Bluetooth (Android 11 e anterior) -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
+    <!-- Bluetooth (Android 12+) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- Contactos do telemóvel (para picker de contactos de emergência) -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- SMS para SOS automático -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+
+    <!-- Foreground Service (gravação em background) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- Notificações (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Feature opcional — app funciona sem BLE -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -17,12 +47,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.VitalRoute">
 
-        <!-- Token Mapbox — descomentar quando tiveres os tokens -->
-        <!--
-        <meta-data
-            android:name="com.mapbox.maps.token"
-            android:value="@string/mapbox_access_token" />
-        -->
+        <!-- Foreground Service de gravação -->
+        <service
+            android:name=".ui.recording.RecordingService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
 
         <activity
             android:name=".MainActivity"

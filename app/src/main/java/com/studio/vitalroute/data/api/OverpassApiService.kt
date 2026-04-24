@@ -17,7 +17,11 @@ data class OverpassResponse(
 data class OverpassElement(
     val type: String = "",
     val id: Long = 0,
+    // Coordenadas diretas (nós/nodes — ex: antenas, mastros)
+    val lat: Double = 0.0,
+    val lon: Double = 0.0,
     val tags: Map<String, String>? = null,
+    // Geometria de linha (ways — ex: ciclovias)
     val geometry: List<OverpassGeomPoint>? = null
 )
 

@@ -199,6 +199,37 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
             )
         }
 
+        Spacer(Modifier.height(12.dp))
+
+        // ── Divisor ───────────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFF2A2A2A))
+            Text("  ou  ", color = Color(0xFF444444), fontSize = 12.sp)
+            HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFF2A2A2A))
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ── Botão convidado ───────────────────────────────────
+        OutlinedButton(
+            onClick  = { viewModel.signInAsGuest() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            shape  = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF333333)),
+            enabled = !uiState.isLoading
+        ) {
+            Text(
+                text  = "Continuar como Convidado",
+                color = Color(0xFF888888),
+                fontSize = 14.sp
+            )
+        }
+
         Spacer(Modifier.height(40.dp))
     }
 }

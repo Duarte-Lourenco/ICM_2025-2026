@@ -85,6 +85,16 @@ class AuthViewModel : ViewModel() {
         }
     }
 
+    // ── Modo convidado (offline — sem Firebase) ───────────────
+    //
+    //  Não faz nenhuma chamada de rede. Entra diretamente na app
+    //  com um utilizador local temporário. Útil para testar sem
+    //  internet ou antes de criar conta.
+
+    fun signInAsGuest() {
+        _uiState.update { it.copy(isLoggedIn = true, error = null) }
+    }
+
     // ── Logout ────────────────────────────────────────────────
 
     fun signOut() {
@@ -111,8 +121,8 @@ class AuthViewModel : ViewModel() {
         message.contains("user-not-found")         -> "Email ou password incorretos"
         message.contains("email-already-in-use")   -> "Este email já está registado"
         message.contains("invalid-email")           -> "Email inválido"
-        message.contains("network")                 -> "Sem ligação à Internet"
+        message.contains("network")                 -> "Sem ligação à Internet. Verifica a internet do emulador ou usa 'Continuar como Convidado'"
         message.contains("too-many-requests")       -> "Demasiadas tentativas. Tenta mais tarde"
-        else                                        -> "Erro: $message"
+        else                                        -> message // mostra o erro real para debug
     }
 }

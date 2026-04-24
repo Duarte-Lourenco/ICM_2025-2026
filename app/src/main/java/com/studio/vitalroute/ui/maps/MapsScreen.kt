@@ -4,10 +4,15 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,24 +37,18 @@ import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
-// ─────────────────────────────────────────────────────────────
-//  MapsScreen — mapa com ciclovias reais e meteorologia
-// ─────────────────────────────────────────────────────────────
-
 @Composable
 fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context  = LocalContext.current
 
-    // Localização real do dispositivo (fallback: Aveiro)
     val userLocation = remember {
         getDeviceLocation(context) ?: GeoPoint(40.6405, -8.6568)
     }
 
-    // Referência ao MapView para animações imperativas
-    val mapViewRef = remember { mutableStateOf<MapView?>(null) }
+    val mapViewRef        = remember { mutableStateOf<MapView?>(null) }
+    val heatmapOverlayRef = remember { mutableStateOf<CoverageHeatmapOverlay?>(null) }
 
-    // Ao entrar no ecrã, atualiza o centro e busca meteo
     LaunchedEffect(Unit) {
         viewModel.updateCenter(userLocation.latitude, userLocation.longitude)
     }
@@ -66,23 +65,26 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                     controller.setZoom(15.0)
                     controller.setCenter(userLocation)
 
-                    // Ponto azul de localização
                     val myLocationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
                     myLocationOverlay.enableMyLocation()
                     overlays.add(myLocationOverlay)
+
+                    // Cria o heatmap overlay uma só vez e mantém referência
+                    val heatmap = CoverageHeatmapOverlay()
+                    heatmapOverlayRef.value = heatmap
 
                     mapViewRef.value = this
                 }
             },
             update = { map ->
-                // Atualiza tiles conforme camada selecionada
+                // ── Tile source ───────────────────────────────
                 val newSource = when (uiState.selectedLayer) {
                     MapLayer.CYCLING  -> cyclOSMTileSource()
                     MapLayer.STANDARD -> TileSourceFactory.MAPNIK
                 }
                 map.setTileSource(newSource)
 
-                // Remove polylines antigas e desenha ciclovias novas
+                // ── Ciclovias (polylines) ─────────────────────
                 map.overlays.removeAll { it is Polyline }
                 uiState.cyclingPaths.forEach { path ->
                     Polyline(map).apply {
@@ -93,12 +95,25 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                         map.overlays.add(this)
                     }
                 }
+
+                // ── Heatmap de cobertura ──────────────────────
+                val heatmap = heatmapOverlayRef.value ?: return@AndroidView
+
+                if (uiState.showCoverage) {
+                    heatmap.updateTowers(uiState.coverageTowers)
+                    if (!map.overlays.contains(heatmap)) {
+                        map.overlays.add(heatmap)
+                    }
+                } else {
+                    map.overlays.remove(heatmap)
+                }
+
                 map.invalidate()
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        // ── Chips de camada (topo esquerdo) ──────────────────
+        // ── Chips de controlo (topo) ──────────────────────────
         Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -106,19 +121,32 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                 .padding(start = 12.dp, top = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            MapLayerChip(
+            // Camada Normal
+            MapChip(
                 label    = "🗺  Normal",
                 selected = uiState.selectedLayer == MapLayer.STANDARD,
                 onClick  = { viewModel.setLayer(MapLayer.STANDARD) }
             )
-            MapLayerChip(
+            // Camada Ciclismo
+            MapChip(
                 label    = "🚴  Ciclismo",
                 selected = uiState.selectedLayer == MapLayer.CYCLING,
                 onClick  = { viewModel.setLayer(MapLayer.CYCLING) }
             )
+            // Toggle cobertura de rede
+            MapChip(
+                label    = if (uiState.isLoadingCoverage) "📶  A carregar…"
+                           else if (uiState.showCoverage) "📶  Rede ✓"
+                           else "📶  Rede",
+                selected = uiState.showCoverage,
+                accentColor = Color(0xFF4FC3F7),   // azul para distinguir
+                onClick  = {
+                    viewModel.toggleCoverage(userLocation.latitude, userLocation.longitude)
+                }
+            )
         }
 
-        // ── Card de meteorologia (topo direito) ──────────────
+        // ── Card meteo (topo direito) ─────────────────────────
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -133,56 +161,73 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             }
         }
 
-        // ── Contador de ciclovias (fundo esquerdo) ────────────
-        if (uiState.pathsLoaded && uiState.cyclingPaths.isNotEmpty()) {
-            Surface(
+        // ── Legenda de cobertura (centro-inferior) ────────────
+        AnimatedVisibility(
+            visible = uiState.showCoverage && !uiState.isLoadingCoverage,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 88.dp),
+            enter = fadeIn(),
+            exit  = fadeOut()
+        ) {
+            CoverageLegendCard(towerCount = uiState.towerCount)
+        }
+
+        // ── Erro de cobertura ─────────────────────────────────
+        uiState.coverageError?.let { err ->
+            AnimatedVisibility(
+                visible = uiState.showCoverage,
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
+                    .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(start = 12.dp, bottom = 80.dp),
-                color = Color(0xDD111111),
-                shape = RoundedCornerShape(12.dp)
+                    .padding(bottom = 88.dp),
+                enter = fadeIn(), exit = fadeOut()
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                Surface(
+                    color = Color(0xDD1A0000),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Surface(
-                        modifier = Modifier.size(10.dp),
-                        color    = VitalGreen,
-                        shape    = RoundedCornerShape(50)
-                    ) {}
                     Text(
-                        text       = "${uiState.cyclingPaths.size} ciclovias encontradas",
-                        color      = Color.White,
-                        fontSize   = 13.sp,
-                        fontWeight = FontWeight.SemiBold
+                        text     = err,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        color    = Color(0xFFFF6B6B),
+                        fontSize = 13.sp
                     )
                 }
             }
         }
 
-        // ── Mensagem de erro (fundo centro) ──────────────────
-        uiState.pathsError?.let { err ->
+        // ── Loading indicator cobertura ───────────────────────
+        if (uiState.isLoadingCoverage) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(bottom = 80.dp),
-                color = Color(0xDD1A0000),
+                    .padding(bottom = 88.dp),
+                color = Color(0xDD111111),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text(
-                    text     = err,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    color    = Color(0xFFFF6B6B),
-                    fontSize = 13.sp
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier    = Modifier.size(16.dp),
+                        color       = Color(0xFF4FC3F7),
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        "A carregar antenas…",
+                        color    = Color.White,
+                        fontSize = 13.sp
+                    )
+                }
             }
         }
 
-        // ── FAB localização (fundo direito) ──────────────────
+        // ── FAB localização (fundo direito) ───────────────────
         FloatingActionButton(
             onClick        = { mapViewRef.value?.controller?.animateTo(userLocation, 16.0, 800L) },
             modifier       = Modifier
@@ -203,10 +248,15 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
 // ─────────────────────────────────────────────────────────────
 
 @Composable
-private fun MapLayerChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun MapChip(
+    label: String,
+    selected: Boolean,
+    accentColor: Color = VitalGreen,
+    onClick: () -> Unit
+) {
     Surface(
         onClick         = onClick,
-        color           = if (selected) VitalGreen else Color(0xDD111111),
+        color           = if (selected) accentColor else Color(0xDD111111),
         contentColor    = if (selected) Color.Black else Color.White,
         shape           = RoundedCornerShape(20.dp),
         shadowElevation = 4.dp
@@ -227,13 +277,8 @@ private fun WeatherOverlayCard(weather: WeatherInfo) {
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text       = weather.temperature,
-                color      = Color.White,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize   = 18.sp
-            )
-            Text(text = weather.condition, color = Color.Gray, fontSize = 11.sp)
+            Text(weather.temperature, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+            Text(weather.condition,   color = Color.Gray,  fontSize = 11.sp)
             Spacer(Modifier.height(4.dp))
             Text(weather.humidity, color = Color.Gray, fontSize = 11.sp)
             Text(weather.wind,     color = Color.Gray, fontSize = 11.sp)
@@ -241,15 +286,69 @@ private fun WeatherOverlayCard(weather: WeatherInfo) {
     }
 }
 
+@Composable
+private fun CoverageLegendCard(towerCount: Int) {
+    Surface(
+        color  = Color(0xF0111111),
+        shape  = RoundedCornerShape(14.dp),
+        shadowElevation = 6.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    Icons.Default.SignalCellularAlt,
+                    null,
+                    tint     = Color(0xFF4FC3F7),
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    "Cobertura de Rede Móvel",
+                    color      = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize   = 12.sp
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "$towerCount antenas",
+                    color    = Color.Gray,
+                    fontSize = 11.sp
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                LegendItem(Color(0xFF1ECC50), "Boa cobertura")
+                LegendItem(Color(0xFFDDCC00), "Cobertura média")
+                LegendItem(Color(0xFFCC2222), "Sem cobertura")
+            }
+        }
+    }
+}
+
+@Composable
+private fun LegendItem(color: Color, label: String) {
+    Row(
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Surface(
+            modifier = Modifier.size(10.dp),
+            color    = color,
+            shape    = RoundedCornerShape(50)
+        ) {}
+        Text(label, color = Color.Gray, fontSize = 10.sp)
+    }
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Helpers
 // ─────────────────────────────────────────────────────────────
 
-/**
- * CyclOSM — camada gratuita especializada em ciclismo.
- * Mostra ciclovias, trilhos e infra-estrutura ciclável com cores próprias.
- * Sem API key necessária.
- */
 private fun cyclOSMTileSource(): OnlineTileSourceBase =
     object : OnlineTileSourceBase(
         "CyclOSM", 1, 19, 256, ".png",
@@ -266,16 +365,10 @@ private fun cyclOSMTileSource(): OnlineTileSourceBase =
             MapTileIndex.getY(pMapTileIndex)    + mImageFilenameEnding
     }
 
-/**
- * Tenta obter a última localização conhecida do dispositivo.
- * Requer ACCESS_FINE_LOCATION (declarada no AndroidManifest.xml).
- * Devolve null se a permissão não estiver concedida ou não houver fix GPS.
- */
 private fun getDeviceLocation(context: Context): GeoPoint? = try {
     val granted = ContextCompat.checkSelfPermission(
         context, Manifest.permission.ACCESS_FINE_LOCATION
     ) == PackageManager.PERMISSION_GRANTED
-
     if (!granted) null
     else {
         val lm  = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager

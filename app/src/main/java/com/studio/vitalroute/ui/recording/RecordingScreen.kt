@@ -1,5 +1,8 @@
 package com.studio.vitalroute.ui.recording
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +30,18 @@ fun RecordingScreen(
     viewModel: RecordingViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // ── Permissão de localização ──────────────────────────────
+    var locationGranted by remember { mutableStateOf(false) }
+    var showPermissionRationale by remember { mutableStateOf(false) }
+
+    val locationPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        locationGranted = granted
+        if (granted) viewModel.startRecording()
+        else showPermissionRationale = true
+    }
 
     Column(
         modifier = Modifier
@@ -160,11 +175,31 @@ fun RecordingScreen(
 
         Spacer(Modifier.height(28.dp))
 
+        // ── Diálogo de permissão negada ───────────────────────
+        if (showPermissionRationale) {
+            AlertDialog(
+                onDismissRequest = { showPermissionRationale = false },
+                containerColor   = CardGray,
+                icon  = { Icon(Icons.Default.LocationOff, null, tint = VitalOrange) },
+                title = { Text("Localização necessária", color = Color.White, fontWeight = FontWeight.Bold) },
+                text  = { Text("A gravação precisa de acesso à localização para registar a rota e distância. Ativa nas definições do sistema.", color = Color.Gray) },
+                confirmButton = {
+                    Button(
+                        onClick = { showPermissionRationale = false },
+                        colors  = ButtonDefaults.buttonColors(containerColor = VitalOrange)
+                    ) { Text("OK") }
+                }
+            )
+        }
+
         // ── Botão Start / Stop ────────────────────────────────
         Button(
             onClick = {
-                if (uiState.isRecording) viewModel.stopRecording()
-                else                     viewModel.startRecording()
+                if (uiState.isRecording) {
+                    viewModel.stopRecording()
+                } else {
+                    locationPermLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                }
             },
             modifier = Modifier
                 .fillMaxWidth()

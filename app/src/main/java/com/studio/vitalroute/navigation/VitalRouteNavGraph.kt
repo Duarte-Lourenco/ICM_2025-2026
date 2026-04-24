@@ -28,6 +28,7 @@ import com.studio.vitalroute.ui.recording.RecordingScreen
 import com.studio.vitalroute.ui.security.SecurityScreen
 import com.studio.vitalroute.ui.diary.DiaryScreen
 import com.studio.vitalroute.ui.settings.SettingsScreen
+import com.studio.vitalroute.ui.bluetooth.BluetoothScreen
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Inicio : Screen("inicio", "Início", Icons.Default.Home)
@@ -62,7 +63,8 @@ fun VitalRouteNavGraph(onSignOut: () -> Unit = {}) {
             composable(Screen.Iniciar.route) { RecordingScreen() }
             composable(Screen.Seguranca.route) { SecurityScreen() }
             composable(Screen.Perfil.route) { DiaryScreen(navController) }
-            composable("settings") { SettingsScreen(navController, onSignOut = onSignOut) }
+            composable("settings")   { SettingsScreen(navController, onSignOut = onSignOut) }
+            composable("bluetooth")  { BluetoothScreen(navController) }
         }
     }
 }

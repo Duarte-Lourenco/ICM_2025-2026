@@ -73,7 +73,12 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
             SectionHeader("SENSORES EXTERNOS")
-            SettingsItem(Icons.Default.Bluetooth, "Sensores Bluetooth", "Cinta Cardíaca, Cadência")
+            SettingsItem(
+                icon     = Icons.Default.Bluetooth,
+                title    = "Sensores Bluetooth",
+                sub      = "Deteção de quedas & SOS automático",
+                onClick  = { navController.navigate("bluetooth") }
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
             Card(
@@ -101,9 +106,9 @@ fun SettingsScreen(
 }
 
 @Composable
-fun SettingsItem(icon: ImageVector, title: String, sub: String? = null) {
+fun SettingsItem(icon: ImageVector, title: String, sub: String? = null, onClick: () -> Unit = {}) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).clickable { },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, null, tint = Color.Gray, modifier = Modifier.size(24.dp))
