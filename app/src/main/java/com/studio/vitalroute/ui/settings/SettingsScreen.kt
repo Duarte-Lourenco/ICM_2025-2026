@@ -18,9 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -53,8 +57,13 @@ fun SettingsScreen(
 
         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
             SectionHeader("PERFIL E CONTA")
-            SettingsItem(Icons.Default.AccountCircle, "Dados Pessoais", "Nome, Peso, Idade")
-            SettingsItem(Icons.Default.Email, "Email", uiState.email)
+            SettingsItem(
+                icon  = Icons.Default.AccountCircle,
+                title = "Nome de Exibição",
+                sub   = uiState.displayName.ifBlank { "— não definido —" },
+                onClick = { viewModel.startEditName() }
+            )
+            SettingsItem(Icons.Default.Email, "Email", uiState.email.ifBlank { "—" })
             SettingsItem(Icons.Default.Lock, "Segurança", "Alterar palavra-passe")
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -65,6 +74,45 @@ fun SettingsScreen(
             SettingsToggle(Icons.Default.Timer, "Auto-Pausa", uiState.autoPause) {
                 viewModel.toggleAutoPause(it)
             }
+            // Objetivo semanal
+            Card(
+                colors = CardDefaults.cardColors(CardGray),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.EmojiEvents, null,
+                                tint = VitalOrange, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text("Objetivo Semanal", color = Color.White,
+                                fontWeight = FontWeight.Medium)
+                        }
+                        Text("${uiState.weeklyGoalKm.toInt()} km",
+                            color = VitalOrange, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = uiState.weeklyGoalKm,
+                        onValueChange = { viewModel.setWeeklyGoal(it) },
+                        valueRange = 10f..300f,
+                        steps = 57,  // 5 km steps
+                        colors = SliderDefaults.colors(
+                            thumbColor = VitalOrange,
+                            activeTrackColor = VitalOrange
+                        )
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("10 km", color = Color.DarkGray, fontSize = 10.sp)
+                        Text("300 km", color = Color.DarkGray, fontSize = 10.sp)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
 
             Spacer(modifier = Modifier.height(24.dp))
             SectionHeader("MAPAS E DADOS")
@@ -101,6 +149,68 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
             Text("Versão 1.0.4 - VitalRoute", color = Color.DarkGray, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 10.sp)
             Spacer(modifier = Modifier.height(40.dp))
+        }
+    }
+
+    // ── Diálogo edição de nome ────────────────────────────────
+    if (uiState.isEditingName) {
+        Dialog(onDismissRequest = { viewModel.cancelEditName() }) {
+            Card(
+                colors = CardDefaults.cardColors(CardGray),
+                shape  = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("Editar Nome", color = Color.White,
+                        fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value         = uiState.editNameValue,
+                        onValueChange = { viewModel.updateEditName(it) },
+                        label         = { Text("Nome") },
+                        singleLine    = true,
+                        modifier      = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { viewModel.saveName() }),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor   = VitalGreen,
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedLabelColor    = VitalGreen,
+                            unfocusedLabelColor  = Color.Gray,
+                            focusedTextColor     = Color.White,
+                            unfocusedTextColor   = Color.White,
+                            cursorColor          = VitalGreen
+                        )
+                    )
+                    uiState.saveNameError?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(it, color = VitalRed, fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(
+                            onClick  = { viewModel.cancelEditName() },
+                            modifier = Modifier.weight(1f),
+                            colors   = ButtonDefaults.outlinedButtonColors(contentColor = Color.Gray),
+                            border   = androidx.compose.foundation.BorderStroke(1.dp, Color.DarkGray)
+                        ) { Text("Cancelar") }
+                        Button(
+                            onClick  = { viewModel.saveName() },
+                            enabled  = uiState.editNameValue.isNotBlank() && !uiState.isSavingName,
+                            modifier = Modifier.weight(1f),
+                            colors   = ButtonDefaults.buttonColors(containerColor = VitalGreen)
+                        ) {
+                            if (uiState.isSavingName) {
+                                CircularProgressIndicator(
+                                    color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text("Guardar", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

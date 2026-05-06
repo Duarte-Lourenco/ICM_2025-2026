@@ -14,19 +14,26 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.max
 
+// Referência às Activities Firestore (para exportação)
+// O ViewModel mantém a lista raw para passar ao ActivityExporter
+
+
 // ─────────────────────────────────────────────────────────────
 //  Modelos UI do Diário
 // ─────────────────────────────────────────────────────────────
 
 data class ActivityUiItem(
     val id: String,
-    val type: String,           // "cycling" | "running"
-    val dateLabel: String,      // ex: "15 Abr 2025"
-    val timeLabel: String,      // ex: "Manhã · 45 min"
-    val distance: String,       // ex: "12.4 km"
-    val duration: String,       // ex: "45 min"
-    val speed: String,          // ex: "16.5 km/h"
-    val elevation: String       // ex: "120 m"
+    val type: String,                           // "cycling" | "running" | "walking"
+    val dateLabel: String,                      // ex: "15 Abr 2025"
+    val timeLabel: String,                      // ex: "Manhã · 45 min"
+    val distance: String,                       // ex: "12.4 km"
+    val duration: String,                       // ex: "45 min"
+    val speed: String,                          // ex: "16.5 km/h"
+    val elevation: String,                      // ex: "120 m"
+    val elevationM: Int = 0,                    // valor numérico para o gráfico
+    val elevationPoints: List<Int> = emptyList(), // amostras de altitude para curva
+    val routePoints: List<String>  = emptyList()  // "lat,lng" para mini-mapa
 )
 
 data class MonthlySummary(
@@ -44,10 +51,11 @@ data class PersonalBests(
 )
 
 data class DiaryUiState(
-    val isLoading: Boolean        = true,
+    val isLoading: Boolean               = true,
     val activities: List<ActivityUiItem> = emptyList(),
-    val monthlySummary: MonthlySummary = MonthlySummary(),
-    val personalBests: PersonalBests   = PersonalBests()
+    val monthlySummary: MonthlySummary   = MonthlySummary(),
+    val personalBests: PersonalBests     = PersonalBests(),
+    val showExportMenu: Boolean          = false
 )
 
 // ─────────────────────────────────────────────────────────────
@@ -61,9 +69,17 @@ class DiaryViewModel : ViewModel() {
 
     private val repository = FirestoreRepository()
 
+    // Lista raw para exportação (Activity original, não o UiItem)
+    private var rawActivities: List<Activity> = emptyList()
+
     init {
         loadActivities()
     }
+
+    fun getRawActivities(): List<Activity> = rawActivities
+
+    fun showExportMenu()  { _uiState.update { it.copy(showExportMenu = true) } }
+    fun hideExportMenu()  { _uiState.update { it.copy(showExportMenu = false) } }
 
     private fun loadActivities() {
         viewModelScope.launch {
@@ -72,6 +88,7 @@ class DiaryViewModel : ViewModel() {
                     _uiState.update { it.copy(isLoading = false) }
                 }
                 .collect { activities ->
+                    rawActivities = activities
                     _uiState.update {
                         it.copy(
                             isLoading      = false,
@@ -96,14 +113,17 @@ class DiaryViewModel : ViewModel() {
             else      -> "Noite"
         }
         return ActivityUiItem(
-            id         = id,
-            type       = type,
-            dateLabel  = dateStr,
-            timeLabel  = "$period · $durationMin min",
-            distance   = "%.1f km".format(distanceKm),
-            duration   = "$durationMin min",
-            speed      = "%.1f km/h".format(avgSpeedKmh),
-            elevation  = "$elevationM m"
+            id              = id,
+            type            = type,
+            dateLabel       = dateStr,
+            timeLabel       = "$period · $durationMin min",
+            distance        = "%.1f km".format(distanceKm),
+            duration        = "$durationMin min",
+            speed           = "%.1f km/h".format(avgSpeedKmh),
+            elevation       = "$elevationM m",
+            elevationM      = elevationM,
+            elevationPoints = elevationPoints,
+            routePoints     = routePoints
         )
     }
 

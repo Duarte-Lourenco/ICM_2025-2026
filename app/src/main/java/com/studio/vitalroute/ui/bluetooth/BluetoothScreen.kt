@@ -73,7 +73,8 @@ fun BluetoothScreen(
                 // ── Dispositivo conectado ──────────────────────
                 if (uiState.connectedDevice != null) {
                     ConnectedDeviceCard(
-                        device = uiState.connectedDevice!!,
+                        device      = uiState.connectedDevice!!,
+                        statusLabel = uiState.gattStatusLabel,
                         onDisconnect = { viewModel.disconnect() }
                     )
                     Spacer(Modifier.height(20.dp))
@@ -157,9 +158,30 @@ fun BluetoothScreen(
 
                 uiState.discoveredDevices.forEach { device ->
                     DeviceListItem(
-                        device = device,
-                        onConnect = { viewModel.connect(device) }
+                        device           = device,
+                        gattStatus       = uiState.gattStatus,
+                        onConnect        = { viewModel.connect(device) }
                     )
+                }
+
+                // ── Progresso da ligação GATT ──────────────────
+                val isTransitioning = uiState.gattStatus !in listOf(
+                    GattConnectionStatus.DISCONNECTED,
+                    GattConnectionStatus.CONNECTED,
+                    GattConnectionStatus.ERROR
+                )
+                AnimatedVisibility(
+                    visible = isTransitioning || uiState.gattStatus == GattConnectionStatus.ERROR,
+                    enter   = fadeIn() + expandVertically(),
+                    exit    = fadeOut() + shrinkVertically()
+                ) {
+                    Column {
+                        GattStatusBanner(
+                            status = uiState.gattStatus,
+                            label  = uiState.gattStatusLabel
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
                 }
 
                 Spacer(Modifier.height(28.dp))
@@ -394,7 +416,11 @@ fun BluetoothScreen(
 // ── Componentes privados ──────────────────────────────────────
 
 @Composable
-private fun ConnectedDeviceCard(device: BleDevice, onDisconnect: () -> Unit) {
+private fun ConnectedDeviceCard(
+    device: BleDevice,
+    statusLabel: String,
+    onDisconnect: () -> Unit
+) {
     Card(
         colors = CardDefaults.cardColors(VitalGreen.copy(alpha = 0.1f)),
         modifier = Modifier.fillMaxWidth().border(1.dp, VitalGreen, RoundedCornerShape(14.dp)),
@@ -418,6 +444,10 @@ private fun ConnectedDeviceCard(device: BleDevice, onDisconnect: () -> Unit) {
                     Text("Conectado  •  ${device.rssi} dBm",
                         color = VitalGreen, fontSize = 12.sp)
                 }
+                if (statusLabel.isNotEmpty()) {
+                    Text(statusLabel, color = Color.Gray, fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 2.dp))
+                }
             }
             TextButton(onClick = onDisconnect) {
                 Text("DESLIGAR", color = VitalRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -427,26 +457,44 @@ private fun ConnectedDeviceCard(device: BleDevice, onDisconnect: () -> Unit) {
 }
 
 @Composable
-private fun DeviceListItem(device: BleDevice, onConnect: () -> Unit) {
+private fun DeviceListItem(
+    device: BleDevice,
+    gattStatus: GattConnectionStatus,
+    onConnect: () -> Unit
+) {
+    val isConnecting = gattStatus in listOf(
+        GattConnectionStatus.CONNECTING,
+        GattConnectionStatus.DISCOVERING_SERVICES,
+        GattConnectionStatus.SUBSCRIBING
+    )
+    val isClickable = !device.isConnected && !isConnecting
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 10.dp)
-            .clickable(enabled = !device.isConnected) { onConnect() },
+            .clickable(enabled = isClickable) { onConnect() },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .background(
-                    if (device.isConnected) VitalGreen.copy(alpha = 0.15f)
-                    else Color.DarkGray.copy(alpha = 0.4f),
+                    when {
+                        device.isConnected -> VitalGreen.copy(alpha = 0.15f)
+                        isConnecting       -> Color(0xFF7B8FE8).copy(alpha = 0.1f)
+                        else               -> Color.DarkGray.copy(alpha = 0.4f)
+                    },
                     CircleShape
                 ),
             contentAlignment = Alignment.Center
         ) {
             Icon(deviceIcon(device.type), null,
-                tint = if (device.isConnected) VitalGreen else Color.Gray,
+                tint = when {
+                    device.isConnected -> VitalGreen
+                    isConnecting       -> Color(0xFF7B8FE8)
+                    else               -> Color.Gray
+                },
                 modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(14.dp))
@@ -458,12 +506,20 @@ private fun DeviceListItem(device: BleDevice, onConnect: () -> Unit) {
                 color = Color.Gray, fontSize = 12.sp
             )
         }
-        if (device.isConnected) {
-            Text("Conectado", color = VitalGreen,
-                fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        } else {
-            Text("LIGAR", color = Color(0xFF7B8FE8),
-                fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        when {
+            device.isConnected -> Text(
+                "Conectado", color = VitalGreen,
+                fontSize = 11.sp, fontWeight = FontWeight.Bold
+            )
+            isConnecting -> CircularProgressIndicator(
+                color     = Color(0xFF7B8FE8),
+                modifier  = Modifier.size(18.dp),
+                strokeWidth = 2.dp
+            )
+            else -> Text(
+                "LIGAR", color = Color(0xFF7B8FE8),
+                fontSize = 12.sp, fontWeight = FontWeight.Bold
+            )
         }
     }
     HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.4f), thickness = 0.5.dp)
@@ -525,6 +581,51 @@ private fun SosCountdownOverlay(remaining: Int, total: Int, onCancel: () -> Unit
                 Spacer(Modifier.width(8.dp))
                 Text("ESTOU BEM", color = Color.White,
                     fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GattStatusBanner(status: GattConnectionStatus, label: String) {
+    val isError = status == GattConnectionStatus.ERROR
+    val color   = if (isError) VitalRed else Color(0xFF7B8FE8)
+
+    Card(
+        colors   = CardDefaults.cardColors(color.copy(alpha = 0.1f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .border(1.dp, color.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Row(
+            Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isError) {
+                Icon(Icons.Default.Error, null,
+                    tint = VitalRed, modifier = Modifier.size(18.dp))
+            } else {
+                CircularProgressIndicator(
+                    color = color, modifier = Modifier.size(18.dp), strokeWidth = 2.dp
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    text = when (status) {
+                        GattConnectionStatus.CONNECTING          -> "A ligar..."
+                        GattConnectionStatus.DISCOVERING_SERVICES -> "A descobrir serviços..."
+                        GattConnectionStatus.SUBSCRIBING         -> "A ativar notificações..."
+                        GattConnectionStatus.ERROR               -> "Erro de ligação"
+                        else                                     -> ""
+                    },
+                    color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold
+                )
+                if (label.isNotEmpty()) {
+                    Text(label, color = Color.Gray, fontSize = 11.sp)
+                }
             }
         }
     }

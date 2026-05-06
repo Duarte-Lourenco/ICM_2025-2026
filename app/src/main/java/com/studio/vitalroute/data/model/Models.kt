@@ -10,15 +10,19 @@ package com.studio.vitalroute.data.model
  * Guardada em: users/{uid}/activities/{activityId}
  */
 data class Activity(
-    val id: String           = "",
-    val type: String         = "cycling",   // "cycling" | "running"
-    val startTime: Long      = 0L,          // epoch ms
-    val endTime: Long        = 0L,
-    val distanceKm: Double   = 0.0,
-    val durationSeconds: Long= 0L,
-    val avgSpeedKmh: Double  = 0.0,
-    val elevationM: Int      = 0,
-    val calories: Int        = 0
+    val id: String                    = "",
+    val type: String                  = "cycling",   // "cycling" | "running" | "walking"
+    val startTime: Long               = 0L,          // epoch ms
+    val endTime: Long                 = 0L,
+    val distanceKm: Double            = 0.0,
+    val durationSeconds: Long         = 0L,
+    val avgSpeedKmh: Double           = 0.0,
+    val elevationM: Int               = 0,
+    val calories: Int                 = 0,
+    // Amostras de altitude recolhidas a cada 30 s (para curva de elevação)
+    val elevationPoints: List<Int>    = emptyList(),
+    // Pontos GPS gravados a cada ~60 s (para visualização da rota)
+    val routePoints: List<String>     = emptyList()  // formato "lat,lng"
 )
 
 /**
@@ -44,7 +48,8 @@ data class UserSettings(
     val immobilityAlertEnabled: Boolean = true,
     val immobilityMinutes: Int     = 5,
     val arrivalAlertEnabled: Boolean = true,
-    val routeDeviationEnabled: Boolean = false
+    val routeDeviationEnabled: Boolean = false,
+    val weeklyGoalKm: Float        = 50f   // objetivo semanal em km
 )
 
 /**
@@ -55,4 +60,17 @@ data class UserProfile(
     val uid: String   = "",
     val name: String  = "",
     val email: String = ""
+)
+
+/**
+ * Zona segura configurada pelo utilizador.
+ * Guardada em: users/{uid}/safeZones/{zoneId}
+ */
+data class FirestoreSafeZone(
+    val id: String      = "",
+    val name: String    = "",    // ex: "Casa", "Trabalho"
+    val address: String = "",    // descrição legível
+    val lat: Double     = 0.0,
+    val lng: Double     = 0.0,
+    val radiusM: Int    = 200    // raio de chegada em metros
 )

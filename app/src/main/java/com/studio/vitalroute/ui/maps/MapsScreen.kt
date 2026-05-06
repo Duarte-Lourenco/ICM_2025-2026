@@ -36,6 +36,7 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import java.io.File
 
 @Composable
 fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
@@ -58,7 +59,20 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
         // ── Mapa OSMDroid ─────────────────────────────────────
         AndroidView(
             factory = { ctx ->
-                Configuration.getInstance().userAgentValue = ctx.packageName
+                // ── Cache offline de tiles ────────────────────
+                Configuration.getInstance().apply {
+                    userAgentValue = ctx.packageName
+                    // Diretório de cache na pasta de cache interna da app
+                    osmdroidBasePath = File(ctx.cacheDir, "osmdroid")
+                    osmdroidTileCache = File(ctx.cacheDir, "osmdroid/tiles")
+                    // Máximo de 200 MB em disco para tiles em cache
+                    tileFileSystemCacheMaxBytes = 200L * 1024L * 1024L
+                    // Expirar tiles após 7 dias (em ms)
+                    expirationOverrideDuration = 7L * 24L * 60L * 60L * 1_000L
+                    // Threads de download paralelo
+                    tileDownloadThreads = 4
+                    tileDownloadMaxQueueSize = 40
+                }
                 MapView(ctx).apply {
                     setTileSource(cyclOSMTileSource())
                     setMultiTouchControls(true)

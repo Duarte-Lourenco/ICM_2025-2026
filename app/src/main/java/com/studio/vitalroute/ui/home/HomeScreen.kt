@@ -147,30 +147,65 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
 
         // ── Última atividade ──────────────────────────────────
         SectionHeader("ÚLTIMA ATIVIDADE")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = CardGray),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+        if (uiState.lastActivityDate.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = CardGray),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.DirectionsBike, null, tint = VitalOrange, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Ciclismo", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                    Text("Terça, 10 Mar", color = Color.Gray, fontSize = 12.sp)
+                    Text("🚴", fontSize = 30.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Nenhuma atividade ainda", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Inicia uma gravação para ver aqui o teu historial.",
+                        color = Color.Gray, fontSize = 12.sp)
                 }
-                Spacer(Modifier.height(14.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    MiniStat("📏", "45.2 km", "Distância")
-                    MiniStat("⏱️", "1h 22m", "Duração")
-                    MiniStat("⚡", "22 km/h", "Veloc.")
-                    MiniStat("⛰️", "320 m", "Elevação")
+            }
+        } else {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = CardGray),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = when (uiState.lastActivityType) {
+                                    "running" -> Icons.Default.DirectionsRun
+                                    "walking" -> Icons.Default.DirectionsWalk
+                                    else      -> Icons.Default.DirectionsBike
+                                },
+                                contentDescription = null,
+                                tint = VitalOrange,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = when (uiState.lastActivityType) {
+                                    "running" -> "Corrida"
+                                    "walking" -> "Caminhada"
+                                    else      -> "Ciclismo"
+                                },
+                                color = Color.White, fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(uiState.lastActivityDate, color = Color.Gray, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        MiniStat("📏", uiState.lastActivityDist,  "Distância")
+                        MiniStat("⏱️", uiState.lastActivityTime,  "Duração")
+                        MiniStat("⚡", uiState.lastActivitySpeed, "Veloc.")
+                        MiniStat("⛰️", uiState.lastActivityElev,  "Elevação")
+                    }
                 }
             }
         }

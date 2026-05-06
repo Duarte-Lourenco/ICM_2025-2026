@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
+
+
 data class HomeUiState(
     val greeting: String = "Bom dia",
     val userName: String = "",
@@ -46,6 +48,22 @@ class HomeViewModel : ViewModel() {
         updateGreeting()
         loadUserName()
         loadActivities()
+        loadSettings()
+    }
+
+    private fun loadSettings() {
+        viewModelScope.launch {
+            repository.getSettingsFlow()
+                .catch { }
+                .collect { settings ->
+                    _uiState.update { s ->
+                        s.copy(
+                            weeklyGoalKm       = settings.weeklyGoalKm,
+                            weeklyGoalProgress = (s.weeklyKm.toFloatOrNull() ?: 0f) / settings.weeklyGoalKm
+                        )
+                    }
+                }
+        }
     }
 
     private fun updateGreeting() {

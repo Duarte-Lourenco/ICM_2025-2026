@@ -2,12 +2,15 @@ package com.studio.vitalroute.ui.security
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.studio.vitalroute.data.api.NominatimRepository
 import com.studio.vitalroute.data.firebase.FirestoreRepository
 import com.studio.vitalroute.data.model.FirestoreContact
+import com.studio.vitalroute.data.model.FirestoreSafeZone
 import com.studio.vitalroute.data.model.UserSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,9 +33,22 @@ data class TrustedContact(
 )
 
 data class SafeZone(
+    val id: String,
     val name: String,
     val address: String,
     val icon: ImageVector
+)
+
+// Estado do diálogo de adicionar zona segura
+data class AddZoneDialogState(
+    val visible: Boolean   = false,
+    val name: String       = "",
+    val address: String    = "",
+    val isSaving: Boolean  = false,
+    val error: String?     = null,
+    val geocodedLat: Double = 0.0,
+    val geocodedLng: Double = 0.0,
+    val geocodeStatus: String = ""   // "", "A localizar...", "✓ Localizado", "! Sem coordenadas"
 )
 
 // Estado do diálogo de adicionar contacto
@@ -53,16 +69,15 @@ data class SecurityUiState(
     val isLoadingContacts: Boolean      = true,
     val fallSensitivity: Float          = 0.5f,
     val sosCountdownSecs: Int           = 15,
-    val safeZones: List<SafeZone>       = listOf(
-        SafeZone("Casa",     "Aveiro, Portugal",  Icons.Default.Home),
-        SafeZone("Trabalho", "Campus UA, Aveiro", Icons.Default.Work)
-    ),
+    val safeZones: List<SafeZone>       = emptyList(),
+    val isLoadingZones: Boolean         = true,
     val immobilityAlertEnabled: Boolean = true,
     val immobilityMinutes: Int          = 5,
     val arrivalAlertEnabled: Boolean    = true,
     val routeDeviationEnabled: Boolean  = false,
-    // Diálogo de adicionar/editar contacto
-    val addDialog: AddContactDialogState = AddContactDialogState()
+    // Diálogos
+    val addDialog: AddContactDialogState = AddContactDialogState(),
+    val addZoneDialog: AddZoneDialogState = AddZoneDialogState()
 )
 
 // ─────────────────────────────────────────────────────────────
@@ -78,7 +93,123 @@ class SecurityViewModel : ViewModel() {
 
     init {
         loadContacts()
+        loadSafeZones()
         loadSettings()
+    }
+
+    // ── Zonas seguras (Firestore) ─────────────────────────────
+
+    private fun loadSafeZones() {
+        viewModelScope.launch {
+            repository.getSafeZones()
+                .catch { _uiState.update { it.copy(isLoadingZones = false) } }
+                .collect { list ->
+                    _uiState.update {
+                        it.copy(
+                            isLoadingZones = false,
+                            safeZones = list.map { z -> z.toUi() }
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun FirestoreSafeZone.toUi(): SafeZone {
+        val icon = when {
+            name.contains("casa",      ignoreCase = true) ||
+            name.contains("home",      ignoreCase = true) -> Icons.Default.Home
+            name.contains("trabalho",  ignoreCase = true) ||
+            name.contains("work",      ignoreCase = true) -> Icons.Default.Work
+            else                                          -> Icons.Default.LocationOn
+        }
+        return SafeZone(id = id, name = name, address = address, icon = icon)
+    }
+
+    // ── Diálogo adicionar zona ────────────────────────────────
+
+    fun openAddZoneDialog() {
+        _uiState.update { it.copy(addZoneDialog = AddZoneDialogState(visible = true)) }
+    }
+
+    fun closeAddZoneDialog() {
+        _uiState.update { it.copy(addZoneDialog = AddZoneDialogState()) }
+    }
+
+    fun updateZoneName(v: String)    { _uiState.update { it.copy(addZoneDialog = it.addZoneDialog.copy(name = v)) } }
+    fun updateZoneAddress(v: String) {
+        _uiState.update { it.copy(addZoneDialog = it.addZoneDialog.copy(address = v, geocodeStatus = "")) }
+    }
+
+    /** Geocodifica o endereço atual e atualiza o estado do diálogo. */
+    fun geocodeCurrentAddress() {
+        val addr = _uiState.value.addZoneDialog.address.trim()
+        if (addr.isBlank()) return
+        _uiState.update { it.copy(addZoneDialog = it.addZoneDialog.copy(geocodeStatus = "A localizar...")) }
+        viewModelScope.launch {
+            val result = NominatimRepository.geocode(addr)
+            _uiState.update {
+                it.copy(addZoneDialog = it.addZoneDialog.copy(
+                    geocodedLat   = result?.lat ?: 0.0,
+                    geocodedLng   = result?.lng ?: 0.0,
+                    geocodeStatus = if (result != null) "✓ Localizado" else "! Sem coordenadas"
+                ))
+            }
+        }
+    }
+
+    fun saveZoneFromDialog() {
+        val d = _uiState.value.addZoneDialog
+        if (d.name.isBlank()) return
+        _uiState.update { it.copy(addZoneDialog = it.addZoneDialog.copy(isSaving = true, error = null)) }
+
+        viewModelScope.launch {
+            // ── Geocoding do endereço via Nominatim ───────────
+            var lat = 0.0
+            var lng = 0.0
+            if (d.address.isNotBlank()) {
+                val result = NominatimRepository.geocode(d.address.trim())
+                if (result != null) {
+                    lat = result.lat
+                    lng = result.lng
+                }
+            }
+
+            try {
+                repository.saveSafeZone(
+                    FirestoreSafeZone(
+                        name    = d.name.trim(),
+                        address = d.address.trim(),
+                        lat     = lat,
+                        lng     = lng
+                    )
+                )
+                closeAddZoneDialog()
+            } catch (e: Exception) {
+                // Fallback local
+                val localZone = SafeZone(
+                    id      = "local_${System.currentTimeMillis()}",
+                    name    = d.name.trim(),
+                    address = d.address.trim(),
+                    icon    = Icons.Default.LocationOn
+                )
+                _uiState.update { s ->
+                    s.copy(
+                        safeZones     = s.safeZones + localZone,
+                        addZoneDialog = AddZoneDialogState()
+                    )
+                }
+            }
+        }
+    }
+
+    fun deleteZone(zoneId: String) {
+        viewModelScope.launch {
+            try {
+                repository.deleteSafeZone(zoneId)
+            } catch (_: Exception) {
+                _uiState.update { s -> s.copy(safeZones = s.safeZones.filter { it.id != zoneId }) }
+            }
+        }
     }
 
     // ── Contactos (Firestore) ─────────────────────────────────

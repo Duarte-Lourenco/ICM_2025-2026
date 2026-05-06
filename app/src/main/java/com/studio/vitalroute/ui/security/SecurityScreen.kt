@@ -261,13 +261,52 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
         Spacer(Modifier.height(28.dp))
 
         // ── Zonas seguras ─────────────────────────────────────
-        SectionHeader("ZONAS SEGURAS")
-        uiState.safeZones.forEach { zone ->
-            SafeZoneCard(zone)
-            Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SectionHeader("ZONAS SEGURAS")
+            TextButton(onClick = { viewModel.openAddZoneDialog() }) {
+                Icon(Icons.Default.Add, null, tint = VitalGreen, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Adicionar", color = VitalGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         }
 
-        Spacer(Modifier.height(20.dp))
+        if (uiState.isLoadingZones) {
+            Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) {
+                CircularProgressIndicator(color = VitalGreen, modifier = Modifier.size(20.dp))
+            }
+        } else if (uiState.safeZones.isEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(CardGray),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    Modifier.padding(20.dp).fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.LocationOff, null, tint = Color.Gray, modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.height(6.dp))
+                    Text("Nenhuma zona segura", color = Color.Gray, fontSize = 13.sp)
+                    Text("Adiciona casa, trabalho ou qualquer local de chegada.",
+                        color = Color.DarkGray, fontSize = 11.sp)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        } else {
+            uiState.safeZones.forEach { zone ->
+                SafeZoneCard(
+                    zone      = zone,
+                    onDelete  = { viewModel.deleteZone(zone.id) }
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
 
         // ── Alertas automáticos ───────────────────────────────
         SectionHeader("ALERTAS AUTOMÁTICOS")
@@ -317,6 +356,18 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
             onZones   = { viewModel.updateDialogZones(it) },
             onConfirm = { viewModel.saveContactFromDialog() },
             onDismiss = { viewModel.closeAddDialog() }
+        )
+    }
+
+    // ── Diálogo de adicionar zona segura ──────────────────────
+    if (uiState.addZoneDialog.visible) {
+        AddZoneDialog(
+            state          = uiState.addZoneDialog,
+            onName         = { viewModel.updateZoneName(it) },
+            onAddress      = { viewModel.updateZoneAddress(it) },
+            onAddressDone  = { viewModel.geocodeCurrentAddress() },
+            onConfirm      = { viewModel.saveZoneFromDialog() },
+            onDismiss      = { viewModel.closeAddZoneDialog() }
         )
     }
 }
@@ -598,7 +649,9 @@ private fun SensitivityBadge(value: Float) {
 }
 
 @Composable
-private fun SafeZoneCard(zone: SafeZone) {
+private fun SafeZoneCard(zone: SafeZone, onDelete: () -> Unit) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors   = CardDefaults.cardColors(containerColor = CardGray),
@@ -616,9 +669,136 @@ private fun SafeZoneCard(zone: SafeZone) {
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(zone.name, color = Color.White, fontWeight = FontWeight.Bold)
-                Text(zone.address, color = Color.Gray, fontSize = 12.sp)
+                if (zone.address.isNotBlank())
+                    Text(zone.address, color = Color.Gray, fontSize = 12.sp)
             }
-            Icon(Icons.Default.CheckCircle, null, tint = VitalGreen, modifier = Modifier.size(20.dp))
+            IconButton(onClick = { showDeleteConfirm = true }) {
+                Icon(Icons.Default.Delete, null, tint = Color.DarkGray, modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            containerColor   = CardGray,
+            title  = { Text("Remover zona?", color = Color.White) },
+            text   = { Text("\"${zone.name}\" será removida das tuas zonas seguras.", color = Color.Gray) },
+            confirmButton = {
+                TextButton(onClick = { onDelete(); showDeleteConfirm = false }) {
+                    Text("Remover", color = VitalRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancelar", color = Color.Gray)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AddZoneDialog(
+    state: AddZoneDialogState,
+    onName: (String) -> Unit,
+    onAddress: (String) -> Unit,
+    onAddressDone: () -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(CardGray),
+            shape  = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Adicionar Zona Segura", color = Color.White,
+                    fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                Spacer(Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = state.name,
+                    onValueChange = onName,
+                    label = { Text("Nome (ex: Casa, Ginásio)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = dialogFieldColors()
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = state.address,
+                    onValueChange = onAddress,
+                    label = { Text("Endereço para geofencing") },
+                    placeholder = { Text("ex: Av. da Universidade, Aveiro", color = Color.DarkGray, fontSize = 12.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = dialogFieldColors(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onDone = { onAddressDone() }
+                    ),
+                    trailingIcon = {
+                        if (state.geocodeStatus == "A localizar...") {
+                            CircularProgressIndicator(
+                                color = Color(0xFF64B5F6),
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else if (state.address.isNotBlank() && state.geocodeStatus.isEmpty()) {
+                            IconButton(onClick = onAddressDone, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Default.Search, null, tint = Color(0xFF64B5F6),
+                                    modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                )
+
+                // Geocoding status
+                if (state.geocodeStatus.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    val statusColor = when {
+                        state.geocodeStatus.startsWith("✓") -> VitalGreen
+                        state.geocodeStatus.startsWith("!") -> VitalOrange
+                        else -> Color(0xFF64B5F6)
+                    }
+                    Text(state.geocodeStatus, color = statusColor, fontSize = 11.sp)
+                }
+
+                state.error?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, color = VitalRed, fontSize = 11.sp)
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "O endereço será geocodificado para deteção de chegada por GPS.",
+                    color = Color.DarkGray, fontSize = 10.sp
+                )
+                Spacer(Modifier.height(16.dp))
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Gray),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.DarkGray)
+                    ) { Text("Cancelar") }
+                    Button(
+                        onClick = onConfirm,
+                        enabled = state.name.isNotBlank() && !state.isSaving,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = VitalGreen)
+                    ) {
+                        if (state.isSaving) CircularProgressIndicator(
+                            color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp
+                        ) else Text("Guardar", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }
