@@ -45,7 +45,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
     ) {
         Spacer(Modifier.height(60.dp))
 
-        // ── Logo / Título ─────────────────────────────────────
+        // logo / título
         Icon(
             imageVector = Icons.Default.DirectionsBike,
             contentDescription = null,
@@ -69,7 +69,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
 
         Spacer(Modifier.height(48.dp))
 
-        // ── Título do modo ────────────────────────────────────
+        // título do modo
         Text(
             text       = if (uiState.isRegisterMode) "Criar conta" else "Entrar",
             color      = Color.White,
@@ -80,7 +80,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
 
         Spacer(Modifier.height(20.dp))
 
-        // ── Campo Nome (só no registo) ────────────────────────
+        // campo nome (só no registo)
         if (uiState.isRegisterMode) {
             AuthTextField(
                 value         = name,
@@ -92,7 +92,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
             Spacer(Modifier.height(12.dp))
         }
 
-        // ── Email ─────────────────────────────────────────────
+        // email
         AuthTextField(
             value         = email,
             onValueChange = { email = it },
@@ -104,7 +104,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
 
         Spacer(Modifier.height(12.dp))
 
-        // ── Password ──────────────────────────────────────────
+        // password
         OutlinedTextField(
             value         = password,
             onValueChange = { password = it },
@@ -133,7 +133,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
 
         Spacer(Modifier.height(8.dp))
 
-        // ── Erro ──────────────────────────────────────────────
+        // erro
         uiState.error?.let { err ->
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -152,7 +152,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
 
         Spacer(Modifier.height(16.dp))
 
-        // ── Botão principal ───────────────────────────────────
+        // botão principal
         Button(
             onClick = {
                 if (uiState.isRegisterMode) viewModel.signUp(name, email, password)
@@ -184,7 +184,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
 
         Spacer(Modifier.height(20.dp))
 
-        // ── Toggle login / registo ────────────────────────────
+        // toggle login / registo
         TextButton(onClick = {
             viewModel.toggleMode()
             name = ""; email = ""; password = ""
@@ -201,7 +201,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
 
         Spacer(Modifier.height(12.dp))
 
-        // ── Divisor ───────────────────────────────────────────
+        // divisor
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -213,7 +213,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
 
         Spacer(Modifier.height(12.dp))
 
-        // ── Botão convidado ───────────────────────────────────
+        // botão convidado
         OutlinedButton(
             onClick  = { viewModel.signInAsGuest() },
             modifier = Modifier
@@ -234,9 +234,6 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Componentes privados
-// ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun AuthTextField(

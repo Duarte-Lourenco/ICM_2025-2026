@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
@@ -41,7 +43,21 @@ fun RecordingScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    // ── Permissão de localização ──────────────────────────────
+    // permissão de sms (necessária para sos)
+    var showSmsRationale by remember { mutableStateOf(false) }
+    val smsPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (!granted) showSmsRationale = true }
+
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            smsPermLauncher.launch(Manifest.permission.SEND_SMS)
+        }
+    }
+
+    // permissão de localização
     var showPermissionRationale by remember { mutableStateOf(false) }
     val locationPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -50,7 +66,7 @@ fun RecordingScreen(
         else showPermissionRationale = true
     }
 
-    // ── SOS Countdown overlay ─────────────────────────────────
+    // sos countdown overlay
     if (uiState.isSosCountdown) {
         SosCountdownOverlay(
             secondsRemaining = uiState.sosCountdownRemaining,
@@ -60,7 +76,7 @@ fun RecordingScreen(
         return
     }
 
-    // ── SOS enviado — diálogo de confirmação ──────────────────
+    // sos enviado — diálogo de confirmação
     if (uiState.sosSent) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissSosSent() },
@@ -92,7 +108,7 @@ fun RecordingScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // ── Cabeçalho ─────────────────────────────────────
+            // cabeçalho
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -131,7 +147,7 @@ fun RecordingScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // ── Seletor de tipo de atividade ──────────────────
+            // seletor de tipo de atividade
             // Só visível quando não está a gravar
             if (!uiState.isRecording) {
                 Text(
@@ -196,7 +212,7 @@ fun RecordingScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // ── Tempo em destaque ─────────────────────────────
+            // tempo em destaque
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -230,7 +246,7 @@ fun RecordingScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── Grelha de métricas 2×2 ────────────────────────
+            // grelha de métricas 2×2
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -277,7 +293,29 @@ fun RecordingScreen(
 
             Spacer(Modifier.height(28.dp))
 
-            // ── Diálogo de permissão negada ───────────────────
+            // diálogo: sms negado
+            if (showSmsRationale) {
+                AlertDialog(
+                    onDismissRequest = { showSmsRationale = false },
+                    containerColor   = CardGray,
+                    icon  = { Icon(Icons.Default.Message, null, tint = VitalRed) },
+                    title = { Text("SMS necessário para SOS", color = Color.White, fontWeight = FontWeight.Bold) },
+                    text  = {
+                        Text(
+                            "O SOS envia uma SMS de emergência aos teus contactos quando detetar uma queda ou imobilidade. Sem esta permissão, o SOS não funciona.",
+                            color = Color.Gray
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { showSmsRationale = false },
+                            colors  = ButtonDefaults.buttonColors(containerColor = VitalRed)
+                        ) { Text("OK") }
+                    }
+                )
+            }
+
+            // diálogo de permissão negada
             if (showPermissionRationale) {
                 AlertDialog(
                     onDismissRequest = { showPermissionRationale = false },
@@ -294,7 +332,7 @@ fun RecordingScreen(
                 )
             }
 
-            // ── Banner de chegada a zona segura ───────────────
+            // banner de chegada a zona segura
             uiState.arrivedAtZone?.let { zoneName ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -332,7 +370,7 @@ fun RecordingScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // ── Partilha de localização em tempo real ─────────
+            // partilha de localização em tempo real
             if (!uiState.isRecording) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -414,7 +452,7 @@ fun RecordingScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // ── Botão Start / Stop ────────────────────────────
+            // botão start / stop
             Button(
                 onClick = {
                     if (uiState.isRecording) {
@@ -448,7 +486,7 @@ fun RecordingScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // ── Info de segurança ─────────────────────────────
+            // info de segurança
             if (!uiState.isRecording) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -472,16 +510,13 @@ fun RecordingScreen(
                 Spacer(Modifier.height(24.dp))
             }
 
-            // ── SOS Slider (manual) ───────────────────────────
+            // sos slider (manual)
             SosSlider(onSosTriggered = { viewModel.triggerSos() })
             Spacer(Modifier.height(32.dp))
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  SOS Countdown Overlay
-// ─────────────────────────────────────────────────────────────
 
 @Composable
 fun SosCountdownOverlay(
@@ -574,9 +609,6 @@ fun SosCountdownOverlay(
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  MetricCard (componente privado)
-// ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun MetricCard(

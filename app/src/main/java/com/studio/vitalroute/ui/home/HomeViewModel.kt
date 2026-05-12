@@ -1,6 +1,10 @@
 package com.studio.vitalroute.ui.home
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import android.location.LocationManager
+import android.os.BatteryManager
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
@@ -19,8 +23,9 @@ import java.util.Calendar
 data class HomeUiState(
     val greeting: String = "Bom dia",
     val userName: String = "",
-    val gpsStatus: String = "Forte",
-    val batteryLevel: String = "82%",
+    val gpsEnabled: Boolean = false,
+    val gpsStatus: String = "A verificar...",
+    val batteryLevel: String = "—%",
     val isReady: Boolean = true,
     // Estatísticas semanais (calculadas a partir do Firestore)
     val weeklyKm: String = "0.0",
@@ -37,7 +42,7 @@ data class HomeUiState(
     val lastActivityElev: String = "—"
 )
 
-class HomeViewModel : ViewModel() {
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -49,6 +54,25 @@ class HomeViewModel : ViewModel() {
         loadUserName()
         loadActivities()
         loadSettings()
+        loadDeviceStatus()
+    }
+
+    private fun loadDeviceStatus() {
+        val ctx = getApplication<Application>()
+
+        val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+
+        val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val gpsEnabled = try { lm.isProviderEnabled(LocationManager.GPS_PROVIDER) } catch (_: Exception) { false }
+
+        _uiState.update {
+            it.copy(
+                batteryLevel = if (level >= 0) "$level%" else "—%",
+                gpsEnabled   = gpsEnabled,
+                gpsStatus    = if (gpsEnabled) "Ativo" else "Inativo"
+            )
+        }
     }
 
     private fun loadSettings() {

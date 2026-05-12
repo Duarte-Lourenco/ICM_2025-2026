@@ -28,9 +28,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.sqrt
 
-// ─────────────────────────────────────────────────────────────
-//  Modelos
-// ─────────────────────────────────────────────────────────────
 
 enum class DeviceType { SMARTWATCH, FITNESS_BAND, HEART_RATE, GENERIC }
 
@@ -56,14 +53,11 @@ data class BluetoothUiState(
     val sosSent: Boolean                   = false,
     val lastEventLabel: String?            = null,
     val bluetoothAvailable: Boolean        = false,
-    // Sensor do telemóvel
+    val isSimulatedMode: Boolean           = false,
     val phoneSensorActive: Boolean         = false,
     val phoneSensorAvailable: Boolean      = false
 )
 
-// ─────────────────────────────────────────────────────────────
-//  ViewModel
-// ─────────────────────────────────────────────────────────────
 
 class BluetoothViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -84,7 +78,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
     // Cache de contactos para envio de SOS offline
     private var cachedSosContacts: List<SosContact> = emptyList()
 
-    // ── Sensor do telemóvel ───────────────────────────────────
+    // sensor do telemóvel
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor?        = null
     private var phoneFallPhase                = PhoneFallPhase.NONE
@@ -93,7 +87,6 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
     private val phoneSensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
-            // Não duplicar com RecordingService se estiver a gravar
             if (RecordingService.state.value.isRecording) return
             if (!_uiState.value.fallDetectionEnabled) return
             if (_uiState.value.isSosCountdown) return
@@ -128,26 +121,21 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t.coerceIn(0f, 1f)
 
-    // ── Inicialização ─────────────────────────────────────────
+    // inicialização
 
     fun init(context: Context) {
         val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bluetoothAdapter = btManager?.adapter
-
-        // Inicializa sensor do telemóvel
         sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-
         _uiState.update {
             it.copy(
-                bluetoothAvailable  = bluetoothAdapter != null,
+                bluetoothAvailable   = bluetoothAdapter != null,
                 phoneSensorAvailable = accelerometer != null
             )
         }
         loadSosContacts()
     }
-
-    // ── Sensor do telemóvel: ativar/desativar ─────────────────
 
     fun togglePhoneSensor(enable: Boolean) {
         if (enable) {
@@ -156,8 +144,8 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
                     phoneSensorListener, sensor, SensorManager.SENSOR_DELAY_GAME
                 )
             }
-            phoneFallPhase     = PhoneFallPhase.NONE
-            phoneLastFallTime  = 0L
+            phoneFallPhase    = PhoneFallPhase.NONE
+            phoneLastFallTime = 0L
             _uiState.update { it.copy(phoneSensorActive = true,
                 lastEventLabel = "Sensor do telemóvel ativo — a monitorizar quedas") }
         } else {
@@ -180,7 +168,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // ── Scan BLE ──────────────────────────────────────────────
+    // scan ble
 
     fun startScan(context: Context) {
         if (_uiState.value.isScanning) return
@@ -230,6 +218,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun simulateScan() {
+        _uiState.update { it.copy(isSimulatedMode = true) }
         val fakes = listOf(
             BleDevice("AA:BB:CC:11:22:33", "VitalBand Pro",         rssi = -48, type = DeviceType.FITNESS_BAND),
             BleDevice("AA:BB:CC:11:22:44", "Garmin Forerunner 265", rssi = -57, type = DeviceType.SMARTWATCH),
@@ -245,7 +234,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(isScanning = false) }
     }
 
-    // ── Ligar ao dispositivo (via GATT real ou simulado) ──────
+    // ligar ao dispositivo (via gatt real ou simulado)
 
     fun connect(device: BleDevice) {
         gattManager?.close()
@@ -349,7 +338,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // ── Desligar ──────────────────────────────────────────────
+    // desligar
 
     fun disconnect() {
         val name = _uiState.value.connectedDevice?.name ?: "dispositivo"
@@ -364,7 +353,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         )}
     }
 
-    // ── Definições de deteção de quedas ───────────────────────
+    // definições de deteção de quedas
 
     fun toggleFallDetection(enabled: Boolean) {
         _uiState.update { it.copy(fallDetectionEnabled = enabled) }
@@ -383,14 +372,14 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(sosSent = false, lastEventLabel = null) }
     }
 
-    // ── Simular queda (botão de teste) ────────────────────────
+    // simular queda (botão de teste)
 
     fun simulateFall() {
         if (!_uiState.value.fallDetectionEnabled) return
         triggerSosCountdown()
     }
 
-    // ── Countdown SOS ─────────────────────────────────────────
+    // countdown sos
 
     private fun triggerSosCountdown() {
         sosJob?.cancel()
@@ -431,7 +420,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         )}
     }
 
-    // ── Cleanup ───────────────────────────────────────────────
+    // cleanup
 
     override fun onCleared() {
         super.onCleared()
@@ -441,7 +430,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         sensorManager?.unregisterListener(phoneSensorListener)
     }
 
-    // ── Helpers ───────────────────────────────────────────────
+    // helpers
 
     private enum class PhoneFallPhase { NONE, FREE_FALL }
 

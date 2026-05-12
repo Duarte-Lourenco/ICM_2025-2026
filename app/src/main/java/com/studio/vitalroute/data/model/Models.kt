@@ -1,9 +1,5 @@
 package com.studio.vitalroute.data.model
 
-// ─────────────────────────────────────────────────────────────
-//  Modelos Firestore — precisam de construtor sem argumentos
-//  (todos os campos têm valores default)
-// ─────────────────────────────────────────────────────────────
 
 /**
  * Atividade gravada (ciclismo ou corrida).

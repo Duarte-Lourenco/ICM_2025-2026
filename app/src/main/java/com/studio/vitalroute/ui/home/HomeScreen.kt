@@ -33,7 +33,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
             .padding(20.dp)
     ) {
 
-        // ── Top bar ───────────────────────────────────────────
+        // top bar
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -53,8 +53,9 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Icon(Icons.Default.SignalCellularAlt, null, tint = VitalGreen, modifier = Modifier.size(14.dp))
-                    Text("GPS", color = VitalGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    val gpsColor = if (uiState.gpsEnabled) VitalGreen else Color(0xFFFF5252)
+                    Icon(Icons.Default.SignalCellularAlt, null, tint = gpsColor, modifier = Modifier.size(14.dp))
+                    Text("GPS", color = gpsColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     Icon(Icons.Default.BatteryFull, null, tint = Color.White, modifier = Modifier.size(14.dp))
@@ -65,7 +66,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
 
         Spacer(Modifier.height(24.dp))
 
-        // ── Sistema operacional ───────────────────────────────
+        // sistema operacional
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -106,7 +107,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
 
         Spacer(Modifier.height(28.dp))
 
-        // ── Esta semana ───────────────────────────────────────
+        // esta semana
         SectionHeader("ESTA SEMANA")
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -145,7 +146,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
 
         Spacer(Modifier.height(28.dp))
 
-        // ── Última atividade ──────────────────────────────────
+        // última atividade
         SectionHeader("ÚLTIMA ATIVIDADE")
         if (uiState.lastActivityDate.isEmpty()) {
             Card(
@@ -212,7 +213,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
 
         Spacer(Modifier.height(28.dp))
 
-        // ── Sensores ──────────────────────────────────────────
+        // sensores
         SectionHeader("SENSORES")
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -220,7 +221,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
             shape = RoundedCornerShape(12.dp)
         ) {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                SensorRow(Icons.Default.SignalCellularAlt, "GPS", uiState.gpsStatus, VitalGreen)
+                SensorRow(Icons.Default.SignalCellularAlt, "GPS", uiState.gpsStatus, if (uiState.gpsEnabled) VitalGreen else Color(0xFFFF5252))
                 HorizontalDivider(color = Color(0xFF222222))
                 SensorRow(Icons.Default.BatteryFull, "Bateria", uiState.batteryLevel, VitalGreen)
                 HorizontalDivider(color = Color(0xFF222222))

@@ -11,15 +11,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.osmdroid.util.GeoPoint
 
-// ─────────────────────────────────────────────────────────────
-//  Camadas de mapa disponíveis
-// ─────────────────────────────────────────────────────────────
 
 enum class MapLayer { STANDARD, CYCLING }
 
-// ─────────────────────────────────────────────────────────────
-//  Modelos de dados da UI
-// ─────────────────────────────────────────────────────────────
 
 data class WeatherInfo(
     val temperature: String,
@@ -56,9 +50,6 @@ data class MapsUiState(
     val centerLon: Double = -8.6568
 )
 
-// ─────────────────────────────────────────────────────────────
-//  MapsViewModel
-// ─────────────────────────────────────────────────────────────
 
 class MapsViewModel : ViewModel() {
 
@@ -70,7 +61,7 @@ class MapsViewModel : ViewModel() {
 
     init { fetchWeather() }
 
-    // ── Meteorologia ─────────────────────────────────────────
+    // meteorologia
 
     fun fetchWeather(
         lat: Double = _uiState.value.centerLat,
@@ -98,7 +89,7 @@ class MapsViewModel : ViewModel() {
         }
     }
 
-    // ── Ciclovias ────────────────────────────────────────────
+    // ciclovias
 
     fun fetchCyclingPaths(lat: Double, lon: Double) {
         viewModelScope.launch {
@@ -134,7 +125,7 @@ class MapsViewModel : ViewModel() {
         }
     }
 
-    // ── Cobertura de rede móvel ───────────────────────────────
+    // cobertura de rede móvel
 
     /**
      * Activa/desactiva a camada de cobertura.
@@ -228,13 +219,13 @@ class MapsViewModel : ViewModel() {
         return towers
     }
 
-    // ── Camada de mapa ────────────────────────────────────────
+    // camada de mapa
 
     fun setLayer(layer: MapLayer) {
         _uiState.update { it.copy(selectedLayer = layer) }
     }
 
-    // ── Centro do mapa ────────────────────────────────────────
+    // centro do mapa
 
     fun updateCenter(lat: Double, lon: Double) {
         _uiState.update { it.copy(centerLat = lat, centerLon = lon) }

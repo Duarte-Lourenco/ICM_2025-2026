@@ -19,9 +19,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-// ─────────────────────────────────────────────────────────────
-//  Modelos de UI
-// ─────────────────────────────────────────────────────────────
 
 data class TrustedContact(
     val id: String           = "",
@@ -80,9 +77,6 @@ data class SecurityUiState(
     val addZoneDialog: AddZoneDialogState = AddZoneDialogState()
 )
 
-// ─────────────────────────────────────────────────────────────
-//  ViewModel
-// ─────────────────────────────────────────────────────────────
 
 class SecurityViewModel : ViewModel() {
 
@@ -97,7 +91,7 @@ class SecurityViewModel : ViewModel() {
         loadSettings()
     }
 
-    // ── Zonas seguras (Firestore) ─────────────────────────────
+    // zonas seguras (firestore)
 
     private fun loadSafeZones() {
         viewModelScope.launch {
@@ -125,7 +119,7 @@ class SecurityViewModel : ViewModel() {
         return SafeZone(id = id, name = name, address = address, icon = icon)
     }
 
-    // ── Diálogo adicionar zona ────────────────────────────────
+    // diálogo adicionar zona
 
     fun openAddZoneDialog() {
         _uiState.update { it.copy(addZoneDialog = AddZoneDialogState(visible = true)) }
@@ -163,7 +157,7 @@ class SecurityViewModel : ViewModel() {
         _uiState.update { it.copy(addZoneDialog = it.addZoneDialog.copy(isSaving = true, error = null)) }
 
         viewModelScope.launch {
-            // ── Geocoding do endereço via Nominatim ───────────
+            // geocoding do endereço via nominatim
             var lat = 0.0
             var lng = 0.0
             if (d.address.isNotBlank()) {
@@ -212,7 +206,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // ── Contactos (Firestore) ─────────────────────────────────
+    // contactos (firestore)
 
     private fun loadContacts() {
         viewModelScope.launch {
@@ -238,7 +232,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // ── Diálogo: abrir com dados do picker do sistema ─────────
+    // diálogo: abrir com dados do picker do sistema
 
     fun openDialogFromPicker(name: String, phone: String) {
         _uiState.update {
@@ -253,7 +247,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // ── Diálogo: abrir vazio (introdução manual) ──────────────
+    // diálogo: abrir vazio (introdução manual)
 
     fun openAddDialog() {
         _uiState.update {
@@ -271,7 +265,7 @@ class SecurityViewModel : ViewModel() {
     fun updateDialogSos(v: Boolean)       { _uiState.update { it.copy(addDialog = it.addDialog.copy(sosEnabled = v)) } }
     fun updateDialogZones(v: Boolean)     { _uiState.update { it.copy(addDialog = it.addDialog.copy(zonesEnabled = v)) } }
 
-    // ── Guardar contacto (do diálogo) ─────────────────────────
+    // guardar contacto (do diálogo)
 
     fun saveContactFromDialog() {
         val d = _uiState.value.addDialog
@@ -312,7 +306,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // ── Apagar contacto ───────────────────────────────────────
+    // apagar contacto
 
     fun deleteContact(contactId: String) {
         viewModelScope.launch {
@@ -328,7 +322,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // ── Toggles SOS / Zonas ───────────────────────────────────
+    // toggles sos / zonas
 
     fun toggleSos(contactId: String, enabled: Boolean) {
         val c = _uiState.value.contacts.find { it.id == contactId } ?: return
@@ -370,7 +364,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // ── Definições ────────────────────────────────────────────
+    // definições
 
     private fun loadSettings() {
         viewModelScope.launch {
@@ -411,6 +405,11 @@ class SecurityViewModel : ViewModel() {
 
     fun updateFallSensitivity(value: Float) {
         _uiState.update { it.copy(fallSensitivity = value) }
+        saveSettings()
+    }
+
+    fun updateSosCountdownSecs(value: Int) {
+        _uiState.update { it.copy(sosCountdownSecs = value) }
         saveSettings()
     }
 

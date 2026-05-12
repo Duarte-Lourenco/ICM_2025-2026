@@ -50,7 +50,7 @@ fun DiaryScreen(
             .padding(20.dp)
     ) {
 
-        // ── Cabeçalho ─────────────────────────────────────────
+        // cabeçalho
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -118,7 +118,7 @@ fun DiaryScreen(
             }
         } else {
 
-            // ── Resumo do mês ─────────────────────────────────
+            // resumo do mês
             SectionHeader("RESUMO DO MÊS")
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -151,7 +151,7 @@ fun DiaryScreen(
 
             Spacer(Modifier.height(28.dp))
 
-            // ── Recordes pessoais ─────────────────────────────
+            // recordes pessoais
             SectionHeader("RECORDES PESSOAIS")
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -172,7 +172,7 @@ fun DiaryScreen(
 
             Spacer(Modifier.height(28.dp))
 
-            // ── Histórico de atividades ───────────────────────
+            // histórico de atividades
             SectionHeader("HISTÓRICO")
 
             if (uiState.activities.isEmpty()) {
@@ -206,9 +206,6 @@ fun DiaryScreen(
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Componentes privados
-// ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun MonthStat(emoji: String, value: String, label: String) {
@@ -305,7 +302,7 @@ private fun ActivityCard(activity: ActivityUiItem, maxElevationM: Int = 1) {
     }
 }
 
-// ── Gráfico de linha de elevação real ────────────────────────────
+// gráfico de linha de elevação real
 
 @Composable
 private fun ElevationProfileChart(points: List<Int>) {
@@ -380,7 +377,7 @@ private fun ElevationProfileChart(points: List<Int>) {
     }
 }
 
-// ── Barra de elevação relativa (fallback quando < 3 amostras) ────
+// barra de elevação relativa (fallback quando < 3 amostras)
 
 @Composable
 private fun ElevationBar(elevationM: Int, maxElevationM: Int) {
@@ -417,7 +414,7 @@ private fun ElevationBar(elevationM: Int, maxElevationM: Int) {
     }
 }
 
-// ── Mini-mapa da rota percorrida ─────────────────────────────────
+// mini-mapa da rota percorrida
 
 @Composable
 private fun MiniRouteMap(points: List<String>) {

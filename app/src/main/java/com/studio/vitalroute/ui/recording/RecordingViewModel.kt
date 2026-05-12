@@ -9,15 +9,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.studio.vitalroute.data.firebase.FirestoreRepository
 import com.studio.vitalroute.data.model.Activity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.studio.vitalroute.data.SosManager
 
-// ─────────────────────────────────────────────────────────────
-//  Tipos de atividade disponíveis
-// ─────────────────────────────────────────────────────────────
 
 enum class ActivityType(val key: String, val label: String, val emoji: String) {
     CYCLING("cycling",  "Ciclismo",  "🚴"),
@@ -25,9 +25,6 @@ enum class ActivityType(val key: String, val label: String, val emoji: String) {
     WALKING("walking",  "Caminhada", "🚶"),
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Estado da UI
-// ─────────────────────────────────────────────────────────────
 
 data class RecordingUiState(
     val isRecording: Boolean      = false,
@@ -42,8 +39,6 @@ data class RecordingUiState(
     val sosCountdownRemaining: Int = 0,
     val sosSent: Boolean          = false,
     val lastAlertLabel: String?   = null,
-    // SOS manual (slider)
-    val manualSosTriggered: Boolean = false,
     // Partilha de localização
     val isLocationSharing: Boolean = false,
     val locationSharingEnabled: Boolean = false,
@@ -51,9 +46,6 @@ data class RecordingUiState(
     val arrivedAtZone: String? = null
 )
 
-// ─────────────────────────────────────────────────────────────
-//  RecordingViewModel
-// ─────────────────────────────────────────────────────────────
 
 class RecordingViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -62,6 +54,8 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _uiState = MutableStateFlow(RecordingUiState())
     val uiState: StateFlow<RecordingUiState> = _uiState.asStateFlow()
+
+    private var manualSosJob: Job? = null
 
     // Definições carregadas do Firestore para passar ao serviço
     private var fallSensitivity        = 0.6f
@@ -113,19 +107,19 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // ── Partilha de localização ───────────────────────────────
+    // partilha de localização
 
     fun toggleLocationSharing(enabled: Boolean) {
         _uiState.update { it.copy(locationSharingEnabled = enabled) }
     }
 
-    // ── Geofencing ────────────────────────────────────────────
+    // geofencing
 
     fun dismissArrival() {
         _uiState.update { it.copy(arrivedAtZone = null) }
     }
 
-    // ── Link de partilha de localização ──────────────────────
+    // link de partilha de localização
 
     fun copyLocationLink(context: Context) {
         val s    = RecordingService.state.value
@@ -148,7 +142,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         clipboard.setPrimaryClip(ClipData.newPlainText("VitalRoute localização", text))
     }
 
-    // ── Tipo de atividade ─────────────────────────────────────
+    // tipo de atividade
 
     fun selectActivityType(type: ActivityType) {
         if (!_uiState.value.isRecording) {
@@ -156,7 +150,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // ── Iniciar gravação ──────────────────────────────────────
+    // iniciar gravação
 
     fun startRecording() {
         val state = _uiState.value
@@ -175,7 +169,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         ctx.startForegroundService(intent)
     }
 
-    // ── Parar gravação ────────────────────────────────────────
+    // parar gravação
 
     fun stopRecording() {
         val s = RecordingService.state.value
@@ -207,30 +201,66 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         ctx.startService(intent)
     }
 
-    // ── Cancelar SOS countdown ────────────────────────────────
+    // sos manual (slider)
+
+    fun triggerSos() {
+        if (_uiState.value.isRecording) {
+            ctx.startService(Intent(ctx, RecordingService::class.java).apply {
+                action = RecordingService.ACTION_TRIGGER_SOS
+            })
+        } else {
+            startManualSosCountdown()
+        }
+    }
+
+    private fun startManualSosCountdown() {
+        manualSosJob?.cancel()
+        _uiState.update {
+            it.copy(
+                isSosCountdown        = true,
+                sosCountdownRemaining = sosDelaySecs,
+                sosSent               = false,
+                lastAlertLabel        = "SOS manual acionado!"
+            )
+        }
+        manualSosJob = viewModelScope.launch {
+            for (remaining in (sosDelaySecs - 1) downTo 0) {
+                kotlinx.coroutines.delay(1_000L)
+                if (!_uiState.value.isSosCountdown) return@launch
+                _uiState.update { it.copy(sosCountdownRemaining = remaining) }
+            }
+            _uiState.update {
+                it.copy(
+                    isSosCountdown        = false,
+                    sosCountdownRemaining = 0,
+                    sosSent               = true,
+                    lastAlertLabel        = "SOS enviado!"
+                )
+            }
+            launch(Dispatchers.IO) {
+                SosManager.sendSos(ctx)
+            }
+        }
+    }
+
+    // cancelar sos countdown
 
     fun cancelSos() {
-        val intent = Intent(ctx, RecordingService::class.java).apply {
-            action = RecordingService.ACTION_CANCEL_SOS
+        if (_uiState.value.isRecording) {
+            ctx.startService(Intent(ctx, RecordingService::class.java).apply {
+                action = RecordingService.ACTION_CANCEL_SOS
+            })
+        } else {
+            manualSosJob?.cancel()
+            _uiState.update { it.copy(isSosCountdown = false, sosCountdownRemaining = 0) }
         }
-        ctx.startService(intent)
     }
 
     fun dismissSosSent() {
         _uiState.update { it.copy(sosSent = false, lastAlertLabel = null) }
     }
 
-    // ── SOS manual (slider) ───────────────────────────────────
-
-    fun triggerSos() {
-        _uiState.update { it.copy(manualSosTriggered = true) }
-    }
-
-    fun dismissManualSos() {
-        _uiState.update { it.copy(manualSosTriggered = false) }
-    }
-
-    // ── Helpers ───────────────────────────────────────────────
+    // helpers
 
     private fun formatTime(secs: Long): String {
         val h = secs / 3600

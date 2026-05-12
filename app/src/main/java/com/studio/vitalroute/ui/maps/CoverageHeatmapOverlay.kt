@@ -10,20 +10,8 @@ import org.osmdroid.util.TileSystem
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Overlay
 
-// ─────────────────────────────────────────────────────────────
-//  CoverageHeatmapOverlay
 //
-//  Desenha um mapa de calor de cobertura de rede móvel sobre o
-//  OSMDroid MapView, usando posições de antenas/mastros reais
-//  obtidos da Overpass API (OpenStreetMap).
 //
-//  Lógica visual:
-//  • Fundo semi-transparente vermelho escuro → sem cobertura
-//  • Gradiente radial verde/amarelo à volta de cada antena
-//    → boa cobertura no centro, degradando com a distância
-//  • Sobreposição de múltiplas antenas cria zonas de cobertura
-//    contínua visualmente convincentes
-// ─────────────────────────────────────────────────────────────
 
 class CoverageHeatmapOverlay(
     private var towers: List<GeoPoint> = emptyList()
@@ -49,7 +37,7 @@ class CoverageHeatmapOverlay(
         val projection = mapView.projection
         val zoom       = mapView.zoomLevelDouble
 
-        // ── 1. Fundo vermelho ("sem cobertura") ───────────────
+        // 1. fundo vermelho ("sem cobertura")
         canvas.drawRect(
             0f, 0f,
             mapView.width.toFloat(), mapView.height.toFloat(),
@@ -58,9 +46,7 @@ class CoverageHeatmapOverlay(
 
         if (towers.isEmpty()) return
 
-        // ── 2. Gradiente de cobertura por antena ──────────────
-        //  Lógica: o gradiente APAGA o fundo vermelho e pinta de verde,
-        //  com alpha moderado para o mapa ser sempre visível por baixo.
+        // 2. gradiente de cobertura por antena
         towers.forEach { tower ->
             val screenPt = projection.toPixels(tower, null) ?: return@forEach
 

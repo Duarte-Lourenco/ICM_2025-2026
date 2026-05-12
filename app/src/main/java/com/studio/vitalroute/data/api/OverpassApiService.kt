@@ -6,9 +6,6 @@ import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.POST
 
-// ─────────────────────────────────────────────────────────────
-//  Modelos de dados da Overpass API (OpenStreetMap)
-// ─────────────────────────────────────────────────────────────
 
 data class OverpassResponse(
     val elements: List<OverpassElement> = emptyList()
@@ -30,11 +27,6 @@ data class OverpassGeomPoint(
     val lon: Double = 0.0
 )
 
-// ─────────────────────────────────────────────────────────────
-//  Interface Retrofit — Overpass API
-//  Base URL: https://overpass-api.de/
-//  Aceita queries em Overpass QL via POST form-encoded
-// ─────────────────────────────────────────────────────────────
 
 interface OverpassApiService {
     @FormUrlEncoded
@@ -42,9 +34,6 @@ interface OverpassApiService {
     suspend fun query(@Field("data") query: String): OverpassResponse
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Singleton Retrofit para Overpass
-// ─────────────────────────────────────────────────────────────
 
 object OverpassRetrofit {
     val service: OverpassApiService by lazy {

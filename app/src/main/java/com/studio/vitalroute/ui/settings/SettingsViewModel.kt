@@ -61,7 +61,7 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
-    // ── Perfil ────────────────────────────────────────────────
+    // perfil
 
     private fun loadProfile() {
         val user = Firebase.auth.currentUser
@@ -128,7 +128,7 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
-    // ── Preferências ──────────────────────────────────────────
+    // preferências
 
     fun toggleMetricSystem(enabled: Boolean) {
         _uiState.update { it.copy(metricSystem = enabled) }

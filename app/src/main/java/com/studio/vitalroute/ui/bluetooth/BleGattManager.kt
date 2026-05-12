@@ -21,9 +21,6 @@ import java.util.LinkedList
 import java.util.UUID
 import kotlin.math.sqrt
 
-// ─────────────────────────────────────────────────────────────
-//  UUIDs standard e custom reconhecidos
-// ─────────────────────────────────────────────────────────────
 
 private object BleUuid {
     // GATT standard
@@ -47,9 +44,6 @@ private object BleUuid {
     // Qualquer serviço desconhecido — subscreve todas as características notificáveis
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Estado da ligação GATT
-// ─────────────────────────────────────────────────────────────
 
 enum class GattConnectionStatus {
     DISCONNECTED,
@@ -60,17 +54,7 @@ enum class GattConnectionStatus {
     ERROR
 }
 
-// ─────────────────────────────────────────────────────────────
-//  BleGattManager
 //
-//  Responsabilidades:
-//    1. Ligar a um dispositivo BLE via BluetoothGatt
-//    2. Descobrir serviços e subscrever características notificáveis
-//    3. Processar dados de acelerómetro recebidos via BLE
-//    4. Aplicar o mesmo algoritmo de deteção de queda (queda livre → impacto)
-//    5. Chamar onFallDetected() quando uma queda é detetada
-//    6. Se for um dispositivo simulado, correr um simulador de dados
-// ─────────────────────────────────────────────────────────────
 
 @SuppressLint("MissingPermission")
 class BleGattManager(
@@ -93,7 +77,7 @@ class BleGattManager(
     // Simulação (quando o device address começa por "AA:BB:CC" = simulado)
     private var simJob: Job? = null
 
-    // ── Ligar ─────────────────────────────────────────────────
+    // ligar
 
     fun connect(device: BluetoothDevice) {
         onStatusChanged(GattConnectionStatus.CONNECTING, "A ligar a ${device.name ?: device.address}…")
@@ -111,7 +95,7 @@ class BleGattManager(
         }
     }
 
-    // ── Desligar ──────────────────────────────────────────────
+    // desligar
 
     fun disconnect() {
         simJob?.cancel()
@@ -123,14 +107,14 @@ class BleGattManager(
         onStatusChanged(GattConnectionStatus.DISCONNECTED, "Desligado")
     }
 
-    // ── Cleanup ───────────────────────────────────────────────
+    // cleanup
 
     fun close() {
         disconnect()
         scope.cancel()
     }
 
-    // ── Callback GATT ─────────────────────────────────────────
+    // callback gatt
 
     private val gattCallback = object : BluetoothGattCallback() {
 
@@ -232,7 +216,7 @@ class BleGattManager(
         }
     }
 
-    // ── Fila de operações GATT ────────────────────────────────
+    // fila de operações gatt
 
     private fun enqueue(op: () -> Unit) {
         opQueue.add(op)
@@ -267,7 +251,7 @@ class BleGattManager(
         }
     }
 
-    // ── Processar dados recebidos ─────────────────────────────
+    // processar dados recebidos
 
     private fun processCharacteristicData(uuid: UUID, value: ByteArray) {
         when {
@@ -298,7 +282,7 @@ class BleGattManager(
         }
     }
 
-    // ── Algoritmo de queda (igual ao do RecordingService) ─────
+    // algoritmo de queda (igual ao do recordingservice)
 
     private fun processAcceleration(x: Float, y: Float, z: Float) {
         val magnitude = sqrt(x * x + y * y + z * z)
@@ -328,10 +312,8 @@ class BleGattManager(
         scope.launch { onFallDetected() }
     }
 
-    // ── Simulação (para dispositivos falsos / emulador) ───────
+    // simulação (para dispositivos falsos / emulador)
     //
-    //  Envia dados de acelerómetro sintéticos a ~20 Hz.
-    //  Ao fim de 5 segundos simula uma queda para demonstração.
 
     private fun startSimulation(deviceName: String) {
         onStatusChanged(GattConnectionStatus.SUBSCRIBING, "A configurar $deviceName…")
@@ -367,7 +349,7 @@ class BleGattManager(
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────
+    // helpers
 
     private fun ByteArray.toInt16(offset: Int): Int {
         val lo = this[offset].toInt() and 0xFF

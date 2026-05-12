@@ -6,16 +6,8 @@ import android.os.Build
 import android.telephony.SmsManager
 import com.studio.vitalroute.data.firebase.FirestoreRepository
 
-// ─────────────────────────────────────────────────────────────
-//  SosManager — envia SMS de emergência a todos os contactos
-//  com sosEnabled = true.
 //
-//  Usado por:
-//    • RecordingService  (queda / imobilidade detetadas)
-//    • BluetoothViewModel (countdown BLE chegou a zero)
 //
-//  Deve ser chamado a partir de uma coroutine (suspend fun).
-// ─────────────────────────────────────────────────────────────
 
 object SosManager {
 

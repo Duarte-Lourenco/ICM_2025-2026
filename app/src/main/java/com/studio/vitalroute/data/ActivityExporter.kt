@@ -8,16 +8,8 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-// ─────────────────────────────────────────────────────────────
-//  ActivityExporter — gera ficheiros GPX ou CSV para partilha
 //
-//  Uso:
-//    ActivityExporter.exportGpx(context, activity)
-//    ActivityExporter.exportCsv(context, activities)
 //
-//  Os ficheiros são escritos em cacheDir e partilhados via
-//  FileProvider + ShareCompat Intent.
-// ─────────────────────────────────────────────────────────────
 
 object ActivityExporter {
 
@@ -26,7 +18,7 @@ object ActivityExporter {
     }
     private val fileFmt = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
 
-    // ── Exportação GPX de uma atividade ──────────────────────
+    // exportação gpx de uma atividade
 
     fun exportGpx(context: Context, activity: Activity): Intent {
         val typeLabel = when (activity.type) {
@@ -83,7 +75,7 @@ object ActivityExporter {
         return buildShareIntent(context, file, "application/gpx+xml")
     }
 
-    // ── Exportação CSV de todas as atividades ─────────────────
+    // exportação csv de todas as atividades
 
     fun exportCsv(context: Context, activities: List<Activity>): Intent {
         val filename = "vitalroute_atividades_${fileFmt.format(Date())}.csv"
@@ -105,7 +97,7 @@ object ActivityExporter {
         return buildShareIntent(context, file, "text/csv")
     }
 
-    // ── Helper ────────────────────────────────────────────────
+    // helper
 
     private fun buildShareIntent(context: Context, file: File, mimeType: String): Intent {
         val uri = FileProvider.getUriForFile(

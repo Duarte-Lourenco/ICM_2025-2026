@@ -152,7 +152,7 @@ fun SettingsScreen(
         }
     }
 
-    // ── Diálogo edição de nome ────────────────────────────────
+    // diálogo edição de nome
     if (uiState.isEditingName) {
         Dialog(onDismissRequest = { viewModel.cancelEditName() }) {
             Card(

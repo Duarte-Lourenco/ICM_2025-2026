@@ -7,12 +7,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-// ─────────────────────────────────────────────────────────────
-//  NominatimRepository — geocoding de endereços via Nominatim
-//  (OpenStreetMap). Gratuito, sem autenticação.
 //
-//  Endpoint: https://nominatim.openstreetmap.org/search
-// ─────────────────────────────────────────────────────────────
 
 object NominatimRepository {
 

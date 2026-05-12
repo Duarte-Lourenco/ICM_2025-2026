@@ -37,9 +37,6 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sqrt
 
-// ─────────────────────────────────────────────────────────────
-//  Estado partilhado entre o Serviço e o ViewModel
-// ─────────────────────────────────────────────────────────────
 
 data class RecordingServiceState(
     val isRecording: Boolean    = false,
@@ -67,25 +64,17 @@ data class RecordingServiceState(
     val routePoints: List<String>   = emptyList()
 )
 
-// ─────────────────────────────────────────────────────────────
-//  RecordingService — Foreground Service
 //
-//  O que corre em background:
-//    • Cronómetro (a cada segundo)
-//    • GPS — distância, velocidade, elevação
-//    • Acelerómetro — deteção de quedas
-//    • Temporizador de imobilidade
-//    • SOS countdown + envio de SMS
-// ─────────────────────────────────────────────────────────────
 
 class RecordingService : Service(), SensorEventListener {
 
     companion object {
         const val CHANNEL_ID      = "vitalroute_recording"
         const val NOTIFICATION_ID = 1001
-        const val ACTION_START    = "com.studio.vitalroute.START_RECORDING"
-        const val ACTION_STOP     = "com.studio.vitalroute.STOP_RECORDING"
-        const val ACTION_CANCEL_SOS = "com.studio.vitalroute.CANCEL_SOS"
+        const val ACTION_START       = "com.studio.vitalroute.START_RECORDING"
+        const val ACTION_STOP        = "com.studio.vitalroute.STOP_RECORDING"
+        const val ACTION_CANCEL_SOS  = "com.studio.vitalroute.CANCEL_SOS"
+        const val ACTION_TRIGGER_SOS = "com.studio.vitalroute.TRIGGER_SOS"
 
         // Extras para configuração
         const val EXTRA_ACTIVITY_TYPE           = "activity_type"
@@ -160,11 +149,11 @@ class RecordingService : Service(), SensorEventListener {
     private var immobilityMinutes    = 5
     private var sosDelaySecs         = 15
 
-    // ── Binder ────────────────────────────────────────────────
+    // binder
     inner class LocalBinder : Binder()
     override fun onBind(intent: Intent?): IBinder = LocalBinder()
 
-    // ── Lifecycle ─────────────────────────────────────────────
+    // lifecycle
 
     override fun onCreate() {
         super.onCreate()
@@ -177,6 +166,7 @@ class RecordingService : Service(), SensorEventListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_TRIGGER_SOS -> triggerSosCountdown("SOS manual acionado!")
             ACTION_START     -> {
                 // Lê as configurações passadas pelo ViewModel
                 activityType           = intent.getStringExtra(EXTRA_ACTIVITY_TYPE) ?: "cycling"
@@ -208,7 +198,7 @@ class RecordingService : Service(), SensorEventListener {
         _state.value = RecordingServiceState()
     }
 
-    // ── Iniciar gravação ──────────────────────────────────────
+    // iniciar gravação
 
     private fun startRecording() {
         val now = System.currentTimeMillis()
@@ -247,7 +237,7 @@ class RecordingService : Service(), SensorEventListener {
         if (arrivalAlertEnabled) loadSafeZonesForGeofencing()
     }
 
-    // ── Parar gravação ────────────────────────────────────────
+    // parar gravação
 
     private fun stopRecording() {
         timerJob?.cancel()
@@ -270,7 +260,7 @@ class RecordingService : Service(), SensorEventListener {
         _state.update { it.copy(isRecording = false, isLocationSharing = false, arrivedAtZone = null) }
     }
 
-    // ── SOS: cancelar (botão "Estou bem") ────────────────────
+    // sos: cancelar (botão "estou bem")
 
     private fun cancelSos() {
         sosJob?.cancel()
@@ -283,7 +273,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // ── Cronómetro ────────────────────────────────────────────
+    // cronómetro
 
     private fun startTimer() {
         timerJob = serviceScope.launch {
@@ -300,7 +290,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // ── GPS ───────────────────────────────────────────────────
+    // gps
 
     @SuppressLint("MissingPermission")
     private fun startLocationUpdates() {
@@ -340,7 +330,7 @@ class RecordingService : Service(), SensorEventListener {
                 val deltaM   = last.distanceTo(location)
                 val deltaMs  = now - lastLocationTimestamp
 
-                // ── Desvio de rota: deteção de salto GPS anómalo ─────
+                // desvio de rota: salto gps anómalo
                 if (routeDeviationEnabled
                     && !_state.value.isSosCountdown
                     && _state.value.elapsedSeconds > 120
@@ -357,8 +347,6 @@ class RecordingService : Service(), SensorEventListener {
                 if (deltaM < 500f) {
                     totalDistanceM += deltaM
                     if (deltaM > 1f) lastMovementTime = now
-                }
-            }
             lastLocation          = location
             lastLocationTimestamp = now
 
@@ -366,7 +354,7 @@ class RecordingService : Service(), SensorEventListener {
             val altM     = if (location.hasAltitude()) location.altitude.toInt() else 0
             val distKm   = totalDistanceM / 1000.0
 
-            // ── Desvio de rota: velocidade anómala sustentada ────
+            // desvio de rota: velocidade anómala sustentada
             if (routeDeviationEnabled && !_state.value.isSosCountdown) {
                 if (speedKmh > ANOMALOUS_SPEED_KMH) {
                     if (anomalousSpeedStart == 0L) anomalousSpeedStart = now
@@ -412,7 +400,6 @@ class RecordingService : Service(), SensorEventListener {
             }
         }
 
-        // Necessário em versões antigas do Android (< API 29)
         override fun onProviderEnabled(provider: String) {}
         override fun onProviderDisabled(provider: String) {}
 
@@ -473,7 +460,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // ── Acelerómetro — Deteção de quedas ─────────────────────
+    // acelerómetro — deteção de quedas
 
     private fun startAccelerometer() {
         accelerometerSensor?.let {
@@ -533,7 +520,7 @@ class RecordingService : Service(), SensorEventListener {
         triggerSosCountdown("Queda detetada! A enviar SOS em...")
     }
 
-    // ── Monitor de imobilidade ────────────────────────────────
+    // monitor de imobilidade
 
     private fun startImmobilityMonitor() {
         immobilityJob = serviceScope.launch {
@@ -555,7 +542,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // ── Monitor de desvio de rota ─────────────────────────────
+    // monitor de desvio de rota
 
     private fun startRouteDeviationMonitor() {
         deviationJob = serviceScope.launch {
@@ -576,7 +563,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // ── Geofencing: carrega zonas ao início ───────────────────
+    // geofencing: carrega zonas ao início
 
     private fun loadSafeZonesForGeofencing() {
         serviceScope.launch(Dispatchers.IO) {
@@ -588,7 +575,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // ── Partilha de localização em tempo real ─────────────────
+    // partilha de localização em tempo real
 
     private fun startLocationSharing() {
         _state.update { it.copy(isLocationSharing = true) }
@@ -609,7 +596,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // ── SOS Countdown ─────────────────────────────────────────
+    // sos countdown
 
     private fun triggerSosCountdown(label: String) {
         sosJob?.cancel()
@@ -646,7 +633,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // ── Notificação persistente ───────────────────────────────
+    // notificação persistente
 
     private fun buildNotification(time: String, distance: String): Notification {
         val openIntent = Intent(this, MainActivity::class.java).apply {
@@ -729,7 +716,7 @@ class RecordingService : Service(), SensorEventListener {
             .createNotificationChannel(channel)
     }
 
-    // ── Helpers ───────────────────────────────────────────────
+    // helpers
 
     private fun formatTime(secs: Long): String {
         val h = secs / 3600

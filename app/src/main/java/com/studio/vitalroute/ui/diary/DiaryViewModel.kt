@@ -18,9 +18,6 @@ import kotlin.math.max
 // O ViewModel mantém a lista raw para passar ao ActivityExporter
 
 
-// ─────────────────────────────────────────────────────────────
-//  Modelos UI do Diário
-// ─────────────────────────────────────────────────────────────
 
 data class ActivityUiItem(
     val id: String,
@@ -58,9 +55,6 @@ data class DiaryUiState(
     val showExportMenu: Boolean          = false
 )
 
-// ─────────────────────────────────────────────────────────────
-//  DiaryViewModel
-// ─────────────────────────────────────────────────────────────
 
 class DiaryViewModel : ViewModel() {
 
@@ -101,7 +95,7 @@ class DiaryViewModel : ViewModel() {
         }
     }
 
-    // ── Conversão Activity → UI ───────────────────────────────
+    // conversão activity → ui
 
     private fun Activity.toUiItem(): ActivityUiItem {
         val dateStr = SimpleDateFormat("d MMM yyyy", Locale("pt", "PT"))
@@ -127,7 +121,7 @@ class DiaryViewModel : ViewModel() {
         )
     }
 
-    // ── Cálculo de resumo mensal ──────────────────────────────
+    // cálculo de resumo mensal
 
     private fun computeMonthlySummary(activities: List<Activity>): MonthlySummary {
         val cal = Calendar.getInstance()
@@ -147,7 +141,7 @@ class DiaryViewModel : ViewModel() {
         )
     }
 
-    // ── Cálculo de recordes pessoais ──────────────────────────
+    // cálculo de recordes pessoais
 
     private fun computePersonalBests(activities: List<Activity>): PersonalBests {
         if (activities.isEmpty()) return PersonalBests()

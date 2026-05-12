@@ -3,10 +3,6 @@ package com.studio.vitalroute.data.api
 import retrofit2.http.GET
 import retrofit2.http.Query
 
-// ─────────────────────────────────────────────────────────────
-//  Modelos de resposta — Open-Meteo API (https://open-meteo.com)
-//  Gratuita, sem autenticação, dados em tempo real
-// ─────────────────────────────────────────────────────────────
 
 data class WeatherResponse(
     val current: CurrentWeatherData
@@ -19,10 +15,6 @@ data class CurrentWeatherData(
     val weather_code: Int
 )
 
-// ─────────────────────────────────────────────────────────────
-//  Interface Retrofit — define os endpoints da API
-//  Cada função é uma suspend function → corre numa coroutine
-// ─────────────────────────────────────────────────────────────
 
 interface WeatherApiService {
 

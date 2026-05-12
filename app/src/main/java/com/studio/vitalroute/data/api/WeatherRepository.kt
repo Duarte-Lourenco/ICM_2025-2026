@@ -3,10 +3,6 @@ package com.studio.vitalroute.data.api
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
-// ─────────────────────────────────────────────────────────────
-//  WeatherRepository — abstrai a origem dos dados
-//  A ViewModel não sabe se os dados vêm da rede, cache, etc.
-// ─────────────────────────────────────────────────────────────
 
 class WeatherRepository {
 

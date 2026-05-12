@@ -32,9 +32,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.studio.vitalroute.ui.components.SectionHeader
 import com.studio.vitalroute.ui.theme.*
 
-// ─────────────────────────────────────────────────────────────
-//  Relações disponíveis para contacto de emergência
-// ─────────────────────────────────────────────────────────────
 private val RELATIONS = listOf("Família", "Cônjuge", "Pai/Mãe", "Filho/a", "Amigo/a", "Colega", "Médico", "Outro")
 
 @Composable
@@ -42,7 +39,7 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // ── Lançador de permissão READ_CONTACTS ───────────────────
+    // lançador de permissão read_contacts
     var permissionDenied by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -50,7 +47,7 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
         if (!granted) permissionDenied = true
     }
 
-    // ── Lançador do picker de contactos do sistema ────────────
+    // lançador do picker de contactos do sistema
     val contactPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickContact()
     ) { uri ->
@@ -101,7 +98,7 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
 
         Spacer(Modifier.height(20.dp))
 
-        // ── Estado geral de proteção ──────────────────────────
+        // estado geral de proteção
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -135,7 +132,7 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
 
         Spacer(Modifier.height(28.dp))
 
-        // ── Rede de confiança ─────────────────────────────────
+        // rede de confiança
         SectionHeader("REDE DE CONFIANÇA")
 
         if (uiState.isLoadingContacts) {
@@ -215,7 +212,7 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
 
         Spacer(Modifier.height(28.dp))
 
-        // ── Deteção de queda ──────────────────────────────────
+        // deteção de queda
         SectionHeader("DETEÇÃO DE QUEDA")
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -250,17 +247,53 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
                     Text("Média", color = Color.Gray, fontSize = 11.sp)
                     Text("Alta",  color = Color.Gray, fontSize = 11.sp)
                 }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "TEMPO DE CONTAGEM SOS",
+                    color = Color.Gray, fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(10, 15, 30, 60).forEach { secs ->
+                        val selected = uiState.sosCountdownSecs == secs
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { viewModel.updateSosCountdownSecs(secs) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (selected) VitalOrange.copy(alpha = 0.15f) else Color(0xFF1E1E1E),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (selected) VitalOrange else Color(0xFF2A2A2A)
+                            )
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                                Text(
+                                    text = "${secs}s",
+                                    color = if (selected) VitalOrange else Color.Gray,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Após deteção de queda, contagem de ${uiState.sosCountdownSecs}s antes de enviar SOS automático.",
-                    color = Color.Gray, fontSize = 11.sp, lineHeight = 16.sp
+                    "Após deteção de queda, tens ${uiState.sosCountdownSecs}s para cancelar antes do SOS ser enviado.",
+                    color = Color.DarkGray, fontSize = 11.sp, lineHeight = 16.sp
                 )
             }
         }
 
         Spacer(Modifier.height(28.dp))
 
-        // ── Zonas seguras ─────────────────────────────────────
+        // zonas seguras
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -308,7 +341,7 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
 
         Spacer(Modifier.height(12.dp))
 
-        // ── Alertas automáticos ───────────────────────────────
+        // alertas automáticos
         SectionHeader("ALERTAS AUTOMÁTICOS")
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -345,7 +378,7 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
         Spacer(Modifier.height(32.dp))
     }
 
-    // ── Diálogo de adicionar/confirmar contacto ───────────────
+    // diálogo de adicionar/confirmar contacto
     if (uiState.addDialog.visible) {
         AddContactDialog(
             state     = uiState.addDialog,
@@ -359,7 +392,7 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
         )
     }
 
-    // ── Diálogo de adicionar zona segura ──────────────────────
+    // diálogo de adicionar zona segura
     if (uiState.addZoneDialog.visible) {
         AddZoneDialog(
             state          = uiState.addZoneDialog,
@@ -372,9 +405,6 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Diálogo — adicionar / confirmar contacto
-// ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun AddContactDialog(
@@ -504,9 +534,6 @@ private fun AddContactDialog(
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Componentes privados
-// ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun ContactCard(

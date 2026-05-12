@@ -13,9 +13,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-// ─────────────────────────────────────────────────────────────
-//  Estado da UI de autenticação
-// ─────────────────────────────────────────────────────────────
+// estado da autenticação
 
 data class AuthUiState(
     val isLoading: Boolean   = false,
@@ -23,10 +21,6 @@ data class AuthUiState(
     val error: String?       = null,
     val isRegisterMode: Boolean = false
 )
-
-// ─────────────────────────────────────────────────────────────
-//  AuthViewModel
-// ─────────────────────────────────────────────────────────────
 
 class AuthViewModel : ViewModel() {
 
@@ -38,7 +32,7 @@ class AuthViewModel : ViewModel() {
     ))
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
-    // ── Login ─────────────────────────────────────────────────
+// login
 
     fun signIn(email: String, password: String) {
         if (email.isBlank() || password.isBlank()) {
@@ -57,9 +51,7 @@ class AuthViewModel : ViewModel() {
             }
         }
     }
-
-    // ── Registo ───────────────────────────────────────────────
-
+// registo
     fun signUp(name: String, email: String, password: String) {
         if (name.isBlank() || email.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(error = "Preenche todos os campos") }
@@ -74,8 +66,7 @@ class AuthViewModel : ViewModel() {
             try {
                 val result = auth.createUserWithEmailAndPassword(email.trim(), password).await()
                 val uid = result.user?.uid ?: error("UID nulo após registo")
-                // Guarda o perfil no Firestore
-                repository.saveUserProfile(UserProfile(uid = uid, name = name.trim(), email = email.trim()))
+                repository.saveUserProfile(UserProfile(uid = uid, name = name.trim(), email = email.trim()))        // para gurdar o perfil
                 _uiState.update { it.copy(isLoading = false, isLoggedIn = true) }
             } catch (e: Exception) {
                 _uiState.update {
@@ -85,24 +76,14 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    // ── Modo convidado (offline — sem Firebase) ───────────────
-    //
-    //  Não faz nenhuma chamada de rede. Entra diretamente na app
-    //  com um utilizador local temporário. Útil para testar sem
-    //  internet ou antes de criar conta.
-
-    fun signInAsGuest() {
+    fun signInAsGuest() {       // modo de convidado
         _uiState.update { it.copy(isLoggedIn = true, error = null) }
     }
 
-    // ── Logout ────────────────────────────────────────────────
-
-    fun signOut() {
+    fun signOut() {         // logout
         auth.signOut()
         _uiState.update { it.copy(isLoggedIn = false) }
     }
-
-    // ── Toggle login/registo ──────────────────────────────────
 
     fun toggleMode() {
         _uiState.update { it.copy(isRegisterMode = !it.isRegisterMode, error = null) }
@@ -112,9 +93,7 @@ class AuthViewModel : ViewModel() {
         _uiState.update { it.copy(error = null) }
     }
 
-    // ── Traduz erros Firebase para português ─────────────────
-
-    private fun parseFirebaseError(message: String?): String = when {
+    private fun parseFirebaseError(message: String?): String = when {       // traduz erros
         message == null                             -> "Erro desconhecido"
         message.contains("INVALID_LOGIN_CREDENTIALS") ||
         message.contains("wrong-password") ||

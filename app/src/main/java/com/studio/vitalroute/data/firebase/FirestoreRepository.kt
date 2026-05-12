@@ -15,16 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
-// ─────────────────────────────────────────────────────────────
-//  FirestoreRepository — ponto único de acesso à base de dados
 //
-//  Estrutura Firestore:
-//  users/{uid}/
-//    ├── (doc)  name, email
-//    ├── activities/{activityId}
-//    ├── contacts/{contactId}
-//    └── settings/main
-// ─────────────────────────────────────────────────────────────
 
 class FirestoreRepository {
 
@@ -43,7 +34,7 @@ class FirestoreRepository {
     private fun userRef()        = db.collection("users").document(uid)
     private fun safeZonesRef()   = db.collection("users").document(uid).collection("safeZones")
 
-    // ── Perfil do utilizador ──────────────────────────────────
+    // perfil do utilizador
 
     suspend fun saveUserProfile(profile: UserProfile) {
         userRef().set(profile).await()
@@ -52,7 +43,7 @@ class FirestoreRepository {
     suspend fun getUserProfile(): UserProfile? =
         userRef().get().await().toObject<UserProfile>()
 
-    // ── Atividades ────────────────────────────────────────────
+    // atividades
 
     /**
      * Guarda uma atividade no Firestore e devolve o ID gerado.
@@ -84,7 +75,7 @@ class FirestoreRepository {
         activitiesRef().document(activityId).delete().await()
     }
 
-    // ── Contactos ─────────────────────────────────────────────
+    // contactos
 
     suspend fun saveContact(contact: FirestoreContact): String {
         val doc = if (contact.id.isEmpty()) contactsRef().document()
@@ -118,7 +109,7 @@ class FirestoreRepository {
         return snapshot.documents.mapNotNull { it.toObject<FirestoreContact>() }
     }
 
-    // ── Zonas seguras ─────────────────────────────────────────
+    // zonas seguras
 
     fun getSafeZones(): Flow<List<FirestoreSafeZone>> = callbackFlow {
         val listener = safeZonesRef()
@@ -154,7 +145,7 @@ class FirestoreRepository {
     suspend fun getZoneContactsOnce(): List<FirestoreContact> =
         getContactsOnce().filter { it.zonesEnabled && it.phone.isNotBlank() }
 
-    // ── Localização em tempo real ─────────────────────────────
+    // localização em tempo real
 
     /**
      * Escreve a posição atual do utilizador no Firestore para partilha em tempo real.
@@ -184,7 +175,7 @@ class FirestoreRepository {
             .update("isSharing", false).await()
     }
 
-    // ── Definições ────────────────────────────────────────────
+    // definições
 
     suspend fun saveSettings(settings: UserSettings) {
         settingsRef().document("main").set(settings).await()

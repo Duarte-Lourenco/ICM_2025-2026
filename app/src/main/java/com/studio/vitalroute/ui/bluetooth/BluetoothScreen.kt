@@ -48,7 +48,7 @@ fun BluetoothScreen(
                 .verticalScroll(rememberScrollState())
         ) {
 
-            // ── Cabeçalho ─────────────────────────────────────
+            // cabeçalho
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -58,7 +58,7 @@ fun BluetoothScreen(
                 }
                 Column {
                     Text(
-                        "SENSORES & DISPOSITIVOS",
+                        "SENSORES BLUETOOTH",
                         color = Color.White,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
@@ -70,7 +70,7 @@ fun BluetoothScreen(
 
             Column(modifier = Modifier.padding(horizontal = 20.dp)) {
 
-                // ── Dispositivo conectado ──────────────────────
+                // dispositivo conectado
                 if (uiState.connectedDevice != null) {
                     ConnectedDeviceCard(
                         device      = uiState.connectedDevice!!,
@@ -80,7 +80,7 @@ fun BluetoothScreen(
                     Spacer(Modifier.height(20.dp))
                 }
 
-                // ── Feedback de último evento ──────────────────
+                // feedback de último evento
                 uiState.lastEventLabel?.let { label ->
                     val isAlert = label.contains("Queda") || label.contains("SOS enviado")
                     Card(
@@ -113,15 +113,37 @@ fun BluetoothScreen(
                     Spacer(Modifier.height(16.dp))
                 }
 
-                // ── Sensor do telemóvel ───────────────────────
+                // aviso modo simulado
+                if (uiState.isSimulatedMode) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1200)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFFFFB300), RoundedCornerShape(10.dp))
+                    ) {
+                        Row(
+                            Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Info, null,
+                                tint = Color(0xFFFFB300), modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                "Bluetooth não disponível neste dispositivo. A mostrar dispositivos de demonstração.",
+                                color = Color(0xFFFFB300), fontSize = 12.sp, lineHeight = 17.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                // sensor do telemóvel
                 BtSectionHeader("SENSOR INTEGRADO DO TELEMÓVEL")
                 Spacer(Modifier.height(10.dp))
 
                 Card(
                     colors = CardDefaults.cardColors(
-                        if (uiState.phoneSensorActive)
-                            VitalGreen.copy(alpha = 0.1f)
-                        else CardGray
+                        if (uiState.phoneSensorActive) VitalGreen.copy(alpha = 0.1f) else CardGray
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -150,52 +172,38 @@ fun BluetoothScreen(
                             Icon(
                                 Icons.Default.PhoneAndroid, null,
                                 tint = if (uiState.phoneSensorActive) VitalGreen else Color.Gray,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
                                 "Acelerómetro do Telemóvel",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
+                                color = Color.White, fontWeight = FontWeight.Medium
                             )
                             Text(
                                 when {
-                                    !uiState.phoneSensorAvailable ->
-                                        "Acelerómetro não disponível neste dispositivo"
-                                    uiState.phoneSensorActive ->
-                                        "Ativo — a monitorizar quedas em tempo real"
-                                    else ->
-                                        "Deteção de quedas sem acessório adicional"
+                                    !uiState.phoneSensorAvailable -> "Sensor não disponível neste dispositivo"
+                                    uiState.phoneSensorActive     -> "A monitorizar quedas"
+                                    else                          -> "Inativo — ativa para detetar quedas sem pulseira"
                                 },
                                 color = if (uiState.phoneSensorActive) VitalGreen else Color.Gray,
                                 fontSize = 12.sp
                             )
                         }
                         Switch(
-                            checked  = uiState.phoneSensorActive,
-                            enabled  = uiState.phoneSensorAvailable,
+                            checked = uiState.phoneSensorActive,
                             onCheckedChange = { viewModel.togglePhoneSensor(it) },
-                            colors   = SwitchDefaults.colors(checkedTrackColor = VitalGreen)
+                            enabled = uiState.phoneSensorAvailable,
+                            colors = SwitchDefaults.colors(checkedTrackColor = VitalGreen)
                         )
                     }
                 }
 
-                if (uiState.phoneSensorAvailable) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "💡  O acelerómetro do telemóvel deteta quedas mesmo sem qualquer acessório Bluetooth. Durante uma gravação ativa, o sensor é gerido automaticamente.",
-                        color = Color.Gray,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                }
+                Spacer(Modifier.height(16.dp))
 
-                Spacer(Modifier.height(24.dp))
-
-                // ── Scan ───────────────────────────────────────
-                BtSectionHeader("DISPOSITIVOS BLUETOOTH (OPCIONAL)")
+                // scan
+                BtSectionHeader("DISPOSITIVOS DISPONÍVEIS")
                 Spacer(Modifier.height(10.dp))
 
                 Button(
@@ -245,7 +253,7 @@ fun BluetoothScreen(
                     )
                 }
 
-                // ── Progresso da ligação GATT ──────────────────
+                // progresso da ligação gatt
                 val isTransitioning = uiState.gattStatus !in listOf(
                     GattConnectionStatus.DISCONNECTED,
                     GattConnectionStatus.CONNECTED,
@@ -267,7 +275,7 @@ fun BluetoothScreen(
 
                 Spacer(Modifier.height(28.dp))
 
-                // ── Deteção de quedas ──────────────────────────
+                // deteção de quedas
                 BtSectionHeader("DETEÇÃO DE QUEDAS & SOS")
                 Spacer(Modifier.height(12.dp))
 
@@ -288,14 +296,9 @@ fun BluetoothScreen(
                             Text("Deteção Automática de Quedas",
                                 color = Color.White, fontWeight = FontWeight.Medium)
                             Text(
-                                when {
-                                    uiState.connectedDevice != null ->
-                                        "Ativo via ${uiState.connectedDevice!!.name}"
-                                    uiState.phoneSensorActive ->
-                                        "Ativo via acelerómetro do telemóvel"
-                                    else ->
-                                        "Ativa o sensor do telemóvel ou liga um dispositivo BLE"
-                                },
+                                if (uiState.connectedDevice != null)
+                                    "Ativo via ${uiState.connectedDevice!!.name}"
+                                else "Liga um dispositivo para ativar",
                                 color = Color.Gray, fontSize = 12.sp
                             )
                         }
@@ -456,7 +459,7 @@ fun BluetoothScreen(
             }
         }
 
-        // ── Overlay SOS countdown ─────────────────────────────
+        // overlay sos countdown
         AnimatedVisibility(
             visible = uiState.isSosCountdown,
             enter = fadeIn() + scaleIn(),
@@ -469,7 +472,7 @@ fun BluetoothScreen(
             )
         }
 
-        // ── Dialog SOS enviado ────────────────────────────────
+        // dialog sos enviado
         if (uiState.sosSent) {
             AlertDialog(
                 onDismissRequest = { viewModel.dismissSosSent() },
@@ -499,7 +502,7 @@ fun BluetoothScreen(
     }
 }
 
-// ── Componentes privados ──────────────────────────────────────
+// componentes privados
 
 @Composable
 private fun ConnectedDeviceCard(

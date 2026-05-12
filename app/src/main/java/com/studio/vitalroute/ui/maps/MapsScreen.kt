@@ -56,10 +56,10 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // ── Mapa OSMDroid ─────────────────────────────────────
+        // mapa osmdroid
         AndroidView(
             factory = { ctx ->
-                // ── Cache offline de tiles ────────────────────
+                // cache offline de tiles
                 Configuration.getInstance().apply {
                     userAgentValue = ctx.packageName
                     // Diretório de cache na pasta de cache interna da app
@@ -91,14 +91,14 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                 }
             },
             update = { map ->
-                // ── Tile source ───────────────────────────────
+                // tile source
                 val newSource = when (uiState.selectedLayer) {
                     MapLayer.CYCLING  -> cyclOSMTileSource()
                     MapLayer.STANDARD -> TileSourceFactory.MAPNIK
                 }
                 map.setTileSource(newSource)
 
-                // ── Ciclovias (polylines) ─────────────────────
+                // ciclovias (polylines)
                 map.overlays.removeAll { it is Polyline }
                 uiState.cyclingPaths.forEach { path ->
                     Polyline(map).apply {
@@ -110,7 +110,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                     }
                 }
 
-                // ── Heatmap de cobertura ──────────────────────
+                // heatmap de cobertura
                 val heatmap = heatmapOverlayRef.value ?: return@AndroidView
 
                 if (uiState.showCoverage) {
@@ -127,7 +127,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // ── Chips de controlo (topo) ──────────────────────────
+        // chips de controlo (topo)
         Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -160,7 +160,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             )
         }
 
-        // ── Card meteo (topo direito) ─────────────────────────
+        // card meteo (topo direito)
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -175,7 +175,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             }
         }
 
-        // ── Legenda de cobertura (centro-inferior) ────────────
+        // legenda de cobertura (centro-inferior)
         AnimatedVisibility(
             visible = uiState.showCoverage && !uiState.isLoadingCoverage,
             modifier = Modifier
@@ -188,7 +188,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             CoverageLegendCard(towerCount = uiState.towerCount)
         }
 
-        // ── Erro de cobertura ─────────────────────────────────
+        // erro de cobertura
         uiState.coverageError?.let { err ->
             AnimatedVisibility(
                 visible = uiState.showCoverage,
@@ -212,7 +212,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             }
         }
 
-        // ── Loading indicator cobertura ───────────────────────
+        // loading indicator cobertura
         if (uiState.isLoadingCoverage) {
             Surface(
                 modifier = Modifier
@@ -241,7 +241,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             }
         }
 
-        // ── FAB localização (fundo direito) ───────────────────
+        // fab localização (fundo direito)
         FloatingActionButton(
             onClick        = { mapViewRef.value?.controller?.animateTo(userLocation, 16.0, 800L) },
             modifier       = Modifier
@@ -257,9 +257,6 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Componentes privados
-// ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun MapChip(
@@ -359,9 +356,6 @@ private fun LegendItem(color: Color, label: String) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Helpers
-// ─────────────────────────────────────────────────────────────
 
 private fun cyclOSMTileSource(): OnlineTileSourceBase =
     object : OnlineTileSourceBase(
