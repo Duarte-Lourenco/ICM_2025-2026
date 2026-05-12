@@ -2,7 +2,9 @@ package com.studio.vitalroute.ui.security
 
 import android.Manifest
 import android.content.ContentResolver
+import android.content.pm.PackageManager
 import android.provider.ContactsContract
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -41,10 +43,12 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
 
     // lançador de permissão read_contacts
     var permissionDenied by remember { mutableStateOf(false) }
+    val contactPickerLauncherRef = remember { mutableStateOf<(() -> Unit)?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (!granted) permissionDenied = true
+        if (granted) contactPickerLauncherRef.value?.invoke()
+        else permissionDenied = true
     }
 
     // lançador do picker de contactos do sistema
@@ -79,6 +83,10 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
         }
 
         viewModel.openDialogFromPicker(name, phone)
+    }
+
+    LaunchedEffect(contactPickerLauncher) {
+        contactPickerLauncherRef.value = { contactPickerLauncher.launch(null) }
     }
 
     Column(
@@ -177,8 +185,11 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
             // Picker de contactos do telemóvel
             Button(
                 onClick = {
-                    permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
-                    contactPickerLauncher.launch(null)
+                    val granted = ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.READ_CONTACTS
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (granted) contactPickerLauncher.launch(null)
+                    else permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
                 },
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = VitalOrange),

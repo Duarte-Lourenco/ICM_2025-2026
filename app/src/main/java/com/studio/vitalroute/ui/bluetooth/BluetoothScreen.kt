@@ -374,7 +374,7 @@ fun BluetoothScreen(
                                     Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    listOf(10, 15, 20, 30).forEach { secs ->
+                                    listOf(10, 15, 30, 60).forEach { secs ->
                                         val selected = uiState.sosDelaySecs == secs
                                         Box(
                                             modifier = Modifier

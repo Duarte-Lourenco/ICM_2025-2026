@@ -347,6 +347,8 @@ class RecordingService : Service(), SensorEventListener {
                 if (deltaM < 500f) {
                     totalDistanceM += deltaM
                     if (deltaM > 1f) lastMovementTime = now
+                }
+            }
             lastLocation          = location
             lastLocationTimestamp = now
 
@@ -368,7 +370,7 @@ class RecordingService : Service(), SensorEventListener {
                 }
             }
 
-            // ── Amostras periódicas: elevação (30 s) e rota (60 s)
+            // amostras periódicas: elevação (30 s) e rota (60 s)
             val elapsed = _state.value.elapsedSeconds
             if (altM > 0 && elapsed - lastElevationSampleSec >= 30L) {
                 elevationSamples.add(altM)
@@ -394,7 +396,7 @@ class RecordingService : Service(), SensorEventListener {
                 )
             }
 
-            // ── Geofencing: verificar proximidade de zonas seguras
+            // geofencing: verificar proximidade de zonas seguras
             if (arrivalAlertEnabled && safeZones.isNotEmpty()) {
                 checkGeofenceArrival(location)
             }
