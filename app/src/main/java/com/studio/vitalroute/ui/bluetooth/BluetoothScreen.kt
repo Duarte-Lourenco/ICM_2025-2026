@@ -58,7 +58,7 @@ fun BluetoothScreen(
                 }
                 Column {
                     Text(
-                        "SENSORES BLUETOOTH",
+                        "SENSORES & DISPOSITIVOS",
                         color = Color.White,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
@@ -113,8 +113,89 @@ fun BluetoothScreen(
                     Spacer(Modifier.height(16.dp))
                 }
 
+                // ── Sensor do telemóvel ───────────────────────
+                BtSectionHeader("SENSOR INTEGRADO DO TELEMÓVEL")
+                Spacer(Modifier.height(10.dp))
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        if (uiState.phoneSensorActive)
+                            VitalGreen.copy(alpha = 0.1f)
+                        else CardGray
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (uiState.phoneSensorActive)
+                                Modifier.border(1.dp, VitalGreen, RoundedCornerShape(14.dp))
+                            else Modifier
+                        ),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Row(
+                        Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    if (uiState.phoneSensorActive)
+                                        VitalGreen.copy(alpha = 0.2f)
+                                    else Color(0xFF2A2A2A),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.PhoneAndroid, null,
+                                tint = if (uiState.phoneSensorActive) VitalGreen else Color.Gray,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Acelerómetro do Telemóvel",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                when {
+                                    !uiState.phoneSensorAvailable ->
+                                        "Acelerómetro não disponível neste dispositivo"
+                                    uiState.phoneSensorActive ->
+                                        "Ativo — a monitorizar quedas em tempo real"
+                                    else ->
+                                        "Deteção de quedas sem acessório adicional"
+                                },
+                                color = if (uiState.phoneSensorActive) VitalGreen else Color.Gray,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Switch(
+                            checked  = uiState.phoneSensorActive,
+                            enabled  = uiState.phoneSensorAvailable,
+                            onCheckedChange = { viewModel.togglePhoneSensor(it) },
+                            colors   = SwitchDefaults.colors(checkedTrackColor = VitalGreen)
+                        )
+                    }
+                }
+
+                if (uiState.phoneSensorAvailable) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "💡  O acelerómetro do telemóvel deteta quedas mesmo sem qualquer acessório Bluetooth. Durante uma gravação ativa, o sensor é gerido automaticamente.",
+                        color = Color.Gray,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+
                 // ── Scan ───────────────────────────────────────
-                BtSectionHeader("DISPOSITIVOS DISPONÍVEIS")
+                BtSectionHeader("DISPOSITIVOS BLUETOOTH (OPCIONAL)")
                 Spacer(Modifier.height(10.dp))
 
                 Button(
@@ -207,9 +288,14 @@ fun BluetoothScreen(
                             Text("Deteção Automática de Quedas",
                                 color = Color.White, fontWeight = FontWeight.Medium)
                             Text(
-                                if (uiState.connectedDevice != null)
-                                    "Ativo via ${uiState.connectedDevice!!.name}"
-                                else "Liga um dispositivo para ativar",
+                                when {
+                                    uiState.connectedDevice != null ->
+                                        "Ativo via ${uiState.connectedDevice!!.name}"
+                                    uiState.phoneSensorActive ->
+                                        "Ativo via acelerómetro do telemóvel"
+                                    else ->
+                                        "Ativa o sensor do telemóvel ou liga um dispositivo BLE"
+                                },
                                 color = Color.Gray, fontSize = 12.sp
                             )
                         }

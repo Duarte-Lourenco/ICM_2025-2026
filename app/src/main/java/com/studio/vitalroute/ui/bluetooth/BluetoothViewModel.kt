@@ -7,11 +7,16 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.studio.vitalroute.data.SosContact
 import com.studio.vitalroute.data.SosManager
 import com.studio.vitalroute.data.firebase.FirestoreRepository
+import com.studio.vitalroute.ui.recording.RecordingService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -21,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.sqrt
 
 // ─────────────────────────────────────────────────────────────
 //  Modelos
@@ -49,7 +55,10 @@ data class BluetoothUiState(
     val sosCountdownRemaining: Int         = 0,
     val sosSent: Boolean                   = false,
     val lastEventLabel: String?            = null,
-    val bluetoothAvailable: Boolean        = false
+    val bluetoothAvailable: Boolean        = false,
+    // Sensor do telemóvel
+    val phoneSensorActive: Boolean         = false,
+    val phoneSensorAvailable: Boolean      = false
 )
 
 // ─────────────────────────────────────────────────────────────
@@ -75,13 +84,88 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
     // Cache de contactos para envio de SOS offline
     private var cachedSosContacts: List<SosContact> = emptyList()
 
+    // ── Sensor do telemóvel ───────────────────────────────────
+    private var sensorManager: SensorManager? = null
+    private var accelerometer: Sensor?        = null
+    private var phoneFallPhase                = PhoneFallPhase.NONE
+    private var phoneLastFallTime             = 0L
+
+    private val phoneSensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+            // Não duplicar com RecordingService se estiver a gravar
+            if (RecordingService.state.value.isRecording) return
+            if (!_uiState.value.fallDetectionEnabled) return
+            if (_uiState.value.isSosCountdown) return
+
+            val x = event.values[0]; val y = event.values[1]; val z = event.values[2]
+            val magnitude = sqrt(x * x + y * y + z * z)
+
+            val sensitivity = _uiState.value.fallSensitivity
+            val freeFallThreshold = lerp(4.0f, 2.0f, sensitivity)
+            val impactThreshold   = lerp(30f,  18f,  sensitivity)
+
+            val now = System.currentTimeMillis()
+            if (now - phoneLastFallTime < 10_000L) return
+
+            when (phoneFallPhase) {
+                PhoneFallPhase.NONE -> {
+                    if (magnitude < freeFallThreshold) phoneFallPhase = PhoneFallPhase.FREE_FALL
+                }
+                PhoneFallPhase.FREE_FALL -> {
+                    if (magnitude > impactThreshold) {
+                        phoneLastFallTime = now
+                        phoneFallPhase    = PhoneFallPhase.NONE
+                        viewModelScope.launch { triggerSosCountdown() }
+                    } else if (magnitude > freeFallThreshold * 2.5f) {
+                        phoneFallPhase = PhoneFallPhase.NONE
+                    }
+                }
+            }
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
+
+    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t.coerceIn(0f, 1f)
+
     // ── Inicialização ─────────────────────────────────────────
 
     fun init(context: Context) {
-        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-        bluetoothAdapter = manager?.adapter
-        _uiState.update { it.copy(bluetoothAvailable = bluetoothAdapter != null) }
+        val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        bluetoothAdapter = btManager?.adapter
+
+        // Inicializa sensor do telemóvel
+        sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+        _uiState.update {
+            it.copy(
+                bluetoothAvailable  = bluetoothAdapter != null,
+                phoneSensorAvailable = accelerometer != null
+            )
+        }
         loadSosContacts()
+    }
+
+    // ── Sensor do telemóvel: ativar/desativar ─────────────────
+
+    fun togglePhoneSensor(enable: Boolean) {
+        if (enable) {
+            accelerometer?.let { sensor ->
+                sensorManager?.registerListener(
+                    phoneSensorListener, sensor, SensorManager.SENSOR_DELAY_GAME
+                )
+            }
+            phoneFallPhase     = PhoneFallPhase.NONE
+            phoneLastFallTime  = 0L
+            _uiState.update { it.copy(phoneSensorActive = true,
+                lastEventLabel = "Sensor do telemóvel ativo — a monitorizar quedas") }
+        } else {
+            sensorManager?.unregisterListener(phoneSensorListener)
+            phoneFallPhase = PhoneFallPhase.NONE
+            _uiState.update { it.copy(phoneSensorActive = false,
+                lastEventLabel = "Sensor do telemóvel desativado") }
+        }
     }
 
     private fun loadSosContacts() {
@@ -354,9 +438,12 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         scanJob?.cancel()
         sosJob?.cancel()
         gattManager?.close()
+        sensorManager?.unregisterListener(phoneSensorListener)
     }
 
     // ── Helpers ───────────────────────────────────────────────
+
+    private enum class PhoneFallPhase { NONE, FREE_FALL }
 
     private fun guessType(name: String?): DeviceType = when {
         name == null -> DeviceType.GENERIC

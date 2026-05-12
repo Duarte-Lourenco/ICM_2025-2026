@@ -292,7 +292,7 @@ class RecordingService : Service(), SensorEventListener {
                 _state.update { s ->
                     s.copy(
                         elapsedSeconds = s.elapsedSeconds + 1,
-                        calories = estimateCalories(s.elapsedSeconds + 1, s.distanceKm, s.activityType)
+                        calories = estimateCalories(s.elapsedSeconds + 1, s.speedKmh, s.activityType)
                     )
                 }
                 updateNotification()
@@ -304,6 +304,7 @@ class RecordingService : Service(), SensorEventListener {
 
     @SuppressLint("MissingPermission")
     private fun startLocationUpdates() {
+        // GPS — precisão total
         try {
             locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
@@ -311,92 +312,112 @@ class RecordingService : Service(), SensorEventListener {
                 locationListener
             )
         } catch (_: Exception) {}
+        // Network provider — fix inicial muito mais rápido (torres / Wi-Fi)
+        // Substitui GPS enquanto o chip não obtém satélites, depois é sobreposto
+        try {
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    LocationManager.NETWORK_PROVIDER,
+                    3_000L, 10f,
+                    locationListener
+                )
+            }
+        } catch (_: Exception) {}
     }
 
     private fun stopLocationUpdates() {
         try { locationManager.removeUpdates(locationListener) } catch (_: Exception) {}
     }
 
-    private val locationListener = LocationListener { location ->
-        lastKnownLocation = location
-        val now  = System.currentTimeMillis()
-        val last = lastLocation
+    private val locationListener = object : LocationListener {
 
-        if (last != null) {
-            val deltaM   = last.distanceTo(location)
-            val deltaMs  = now - lastLocationTimestamp
+        override fun onLocationChanged(location: Location) {
+            lastKnownLocation = location
+            val now  = System.currentTimeMillis()
+            val last = lastLocation
 
-            // ── Desvio de rota: deteção de salto GPS anómalo ─────
-            if (routeDeviationEnabled
-                && !_state.value.isSosCountdown
-                && _state.value.elapsedSeconds > 120        // só após 2 min de gravação
-                && deltaMs in 1_000L..ROUTE_DEVIATION_JUMP_MS
-                && deltaM > ROUTE_DEVIATION_JUMP_M
-            ) {
-                // Salto de >400m em menos de 60s sem velocidade GPS compatível
-                val impliedSpeedKmh = (deltaM / (deltaMs / 1000f)) * 3.6f
-                if (impliedSpeedKmh > ANOMALOUS_SPEED_KMH) {
-                    _state.update { it.copy(lastAlertLabel = "Salto GPS anómalo detetado!") }
-                    triggerSosCountdown("Desvio de rota detetado! A enviar SOS em...")
+            if (last != null) {
+                val deltaM   = last.distanceTo(location)
+                val deltaMs  = now - lastLocationTimestamp
+
+                // ── Desvio de rota: deteção de salto GPS anómalo ─────
+                if (routeDeviationEnabled
+                    && !_state.value.isSosCountdown
+                    && _state.value.elapsedSeconds > 120
+                    && deltaMs in 1_000L..ROUTE_DEVIATION_JUMP_MS
+                    && deltaM > ROUTE_DEVIATION_JUMP_M
+                ) {
+                    val impliedSpeedKmh = (deltaM / (deltaMs / 1000f)) * 3.6f
+                    if (impliedSpeedKmh > ANOMALOUS_SPEED_KMH) {
+                        _state.update { it.copy(lastAlertLabel = "Salto GPS anómalo detetado!") }
+                        triggerSosCountdown("Desvio de rota detetado! A enviar SOS em...")
+                    }
+                }
+
+                if (deltaM < 500f) {
+                    totalDistanceM += deltaM
+                    if (deltaM > 1f) lastMovementTime = now
                 }
             }
+            lastLocation          = location
+            lastLocationTimestamp = now
 
-            if (deltaM < 500f) {
-                totalDistanceM += deltaM
-                if (deltaM > 1f) {             // movimento real (>1 m) — reset imobilidade
-                    lastMovementTime = now
-                }
-            }
-        }
-        lastLocation      = location
-        lastLocationTimestamp = now
+            val speedKmh = if (location.hasSpeed()) location.speed * 3.6f else 0f
+            val altM     = if (location.hasAltitude()) location.altitude.toInt() else 0
+            val distKm   = totalDistanceM / 1000.0
 
-        val speedKmh = if (location.hasSpeed()) location.speed * 3.6f else 0f
-        val altM     = if (location.hasAltitude()) location.altitude.toInt() else 0
-        val distKm   = totalDistanceM / 1000.0
-
-        // ── Desvio de rota: velocidade anómala sustentada ─────────
-        if (routeDeviationEnabled && !_state.value.isSosCountdown) {
-            if (speedKmh > ANOMALOUS_SPEED_KMH) {
-                if (anomalousSpeedStart == 0L) anomalousSpeedStart = now
-                else if (now - anomalousSpeedStart >= ANOMALOUS_SPEED_MS) {
+            // ── Desvio de rota: velocidade anómala sustentada ────
+            if (routeDeviationEnabled && !_state.value.isSosCountdown) {
+                if (speedKmh > ANOMALOUS_SPEED_KMH) {
+                    if (anomalousSpeedStart == 0L) anomalousSpeedStart = now
+                    else if (now - anomalousSpeedStart >= ANOMALOUS_SPEED_MS) {
+                        anomalousSpeedStart = 0L
+                        _state.update { it.copy(lastAlertLabel = "Velocidade anómala (${speedKmh.toInt()} km/h)!") }
+                        triggerSosCountdown("Velocidade anómala detetada! A enviar SOS em...")
+                    }
+                } else {
                     anomalousSpeedStart = 0L
-                    _state.update { it.copy(lastAlertLabel = "Velocidade anómala (${speedKmh.toInt()} km/h)!") }
-                    triggerSosCountdown("Velocidade anómala detetada! A enviar SOS em...")
                 }
-            } else {
-                anomalousSpeedStart = 0L  // velocidade normal — reset
+            }
+
+            // ── Amostras periódicas: elevação (30 s) e rota (60 s)
+            val elapsed = _state.value.elapsedSeconds
+            if (altM > 0 && elapsed - lastElevationSampleSec >= 30L) {
+                elevationSamples.add(altM)
+                lastElevationSampleSec = elapsed
+            }
+            if (elapsed - lastRouteSampleSec >= 60L
+                && (location.latitude != 0.0 || location.longitude != 0.0)
+            ) {
+                routeSamples.add("%.6f,%.6f".format(location.latitude, location.longitude))
+                lastRouteSampleSec = elapsed
+            }
+
+            _state.update { s ->
+                s.copy(
+                    distanceKm      = distKm,
+                    speedKmh        = speedKmh.toDouble(),
+                    elevationM      = altM,
+                    calories        = estimateCalories(s.elapsedSeconds, speedKmh.toDouble(), s.activityType),
+                    currentLat      = location.latitude,
+                    currentLng      = location.longitude,
+                    elevationPoints = elevationSamples.toList(),
+                    routePoints     = routeSamples.toList()
+                )
+            }
+
+            // ── Geofencing: verificar proximidade de zonas seguras
+            if (arrivalAlertEnabled && safeZones.isNotEmpty()) {
+                checkGeofenceArrival(location)
             }
         }
 
-        // ── Amostras periódicas: elevação (30 s) e rota (60 s) ──
-        val elapsed = _state.value.elapsedSeconds
-        if (altM > 0 && elapsed - lastElevationSampleSec >= 30L) {
-            elevationSamples.add(altM)
-            lastElevationSampleSec = elapsed
-        }
-        if (elapsed - lastRouteSampleSec >= 60L && (location.latitude != 0.0 || location.longitude != 0.0)) {
-            routeSamples.add("%.6f,%.6f".format(location.latitude, location.longitude))
-            lastRouteSampleSec = elapsed
-        }
+        // Necessário em versões antigas do Android (< API 29)
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
 
-        _state.update { s ->
-            s.copy(
-                distanceKm     = distKm,
-                speedKmh       = speedKmh.toDouble(),
-                elevationM     = altM,
-                calories       = estimateCalories(s.elapsedSeconds, distKm, s.activityType),
-                currentLat     = location.latitude,
-                currentLng     = location.longitude,
-                elevationPoints = elevationSamples.toList(),
-                routePoints     = routeSamples.toList()
-            )
-        }
-
-        // ── Geofencing: verificar proximidade de zonas seguras ─
-        if (arrivalAlertEnabled && safeZones.isNotEmpty()) {
-            checkGeofenceArrival(location)
-        }
+        @Suppress("OVERRIDE_DEPRECATION")
+        override fun onStatusChanged(provider: String, status: Int, extras: android.os.Bundle?) {}
     }
 
     private fun checkGeofenceArrival(location: android.location.Location) {
@@ -717,16 +738,50 @@ class RecordingService : Service(), SensorEventListener {
         return "%02d:%02d:%02d".format(h, m, s)
     }
 
-    private fun estimateCalories(secs: Long, distKm: Double, type: String): Int {
-        // kcal/km por tipo de atividade (estimativa para ~70 kg)
-        val kcalPerKm = when (type) {
-            "running" -> 60.0
-            "walking" -> 45.0
-            else      -> 35.0  // ciclismo
+    /**
+     * Calorias baseadas em MET (Metabolic Equivalent of Task) com velocidade real.
+     * Fórmula padrão: kcal = MET × peso(kg) × tempo(horas)
+     * Peso assumido: 70 kg (valor médio; futuramente configurável no perfil).
+     *
+     * Valores MET por velocidade — baseados em compêndio de atividades físicas
+     * (Ainsworth et al., 2011):
+     *   Ciclismo: 4.0 (< 10 km/h) → 10.0 (> 30 km/h)
+     *   Corrida:  6.0 (< 6 km/h)  → 14.5 (> 18 km/h)
+     *   Caminhada: 2.5 (< 2 km/h) →  5.0 (> 6 km/h)
+     */
+    private fun estimateCalories(secs: Long, speedKmh: Double, type: String): Int {
+        if (secs < 1) return 0
+        val met = when (type) {
+            "running" -> when {
+                speedKmh < 6.0  -> 6.0
+                speedKmh < 8.0  -> 8.3
+                speedKmh < 10.0 -> 9.8
+                speedKmh < 12.0 -> 11.0
+                speedKmh < 14.0 -> 11.8
+                speedKmh < 16.0 -> 12.8
+                speedKmh < 18.0 -> 14.0
+                else             -> 14.5
+            }
+            "walking" -> when {
+                speedKmh < 2.0  -> 2.5
+                speedKmh < 3.5  -> 3.0
+                speedKmh < 5.0  -> 3.5
+                speedKmh < 6.0  -> 4.3
+                speedKmh < 7.0  -> 5.0
+                else             -> 6.0   // marcha rápida
+            }
+            else -> when { // ciclismo
+                speedKmh < 10.0 -> 4.0
+                speedKmh < 16.0 -> 5.8
+                speedKmh < 20.0 -> 7.0
+                speedKmh < 25.0 -> 8.5
+                speedKmh < 30.0 -> 10.0
+                else             -> 12.0
+            }
         }
-        val byDistance = distKm * kcalPerKm
-        val byTime     = (secs / 60.0) * 4.0  // mínimo de base
-        return maxOf(byDistance, byTime).toInt()
+        val weightKg = 70.0
+        val hours    = secs / 3600.0
+        return (met * weightKg * hours).toInt()
     }
 
     /** Interpolação linear entre dois valores */
