@@ -1,5 +1,8 @@
 package com.studio.vitalroute.ui.auth
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -28,6 +31,18 @@ import com.studio.vitalroute.ui.theme.*
 @Composable
 fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    if (uiState.isForgotPassword) {
+        ForgotPasswordDialog(
+            email     = uiState.forgotEmail,
+            isLoading = uiState.forgotLoading,
+            error     = uiState.forgotError,
+            success   = uiState.forgotSuccess,
+            onEmailChange = { viewModel.updateForgotEmail(it) },
+            onSend    = { viewModel.sendPasswordReset() },
+            onDismiss = { viewModel.cancelForgotPassword() }
+        )
+    }
 
     if (uiState.isEmailVerificationPending) {
         EmailVerificationScreen(
@@ -200,6 +215,14 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
                 fontSize = 11.sp,
                 modifier = Modifier.fillMaxWidth()
             )
+        } else {
+            TextButton(
+                onClick  = { viewModel.startForgotPassword(email) },
+                modifier = Modifier.align(Alignment.End),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text("Esqueci-me da password", color = Color(0xFF888888), fontSize = 12.sp)
+            }
         }
 
         Spacer(Modifier.height(8.dp))
@@ -309,6 +332,90 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
         }
 
         Spacer(Modifier.height(40.dp))
+    }
+}
+
+@Composable
+private fun ForgotPasswordDialog(
+    email: String,
+    isLoading: Boolean,
+    error: String?,
+    success: Boolean,
+    onEmailChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(Color(0xFF1A1A1A)),
+            shape  = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Default.LockReset, null, tint = VitalGreen, modifier = Modifier.size(24.dp))
+                    Text("Recuperar password", color = Color.White,
+                        fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                }
+                Spacer(Modifier.height(12.dp))
+
+                if (success) {
+                    Surface(color = Color(0xFF002A00), shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp, 10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Default.CheckCircle, null, tint = VitalGreen, modifier = Modifier.size(16.dp))
+                                Text("Email enviado!", color = VitalGreen, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text("Verifica a caixa de entrada de $email e segue as instruções para criar uma nova password.",
+                                color = Color(0xFF88CC88), fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = VitalGreen)) {
+                        Text("Fechar", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Text("Introduz o teu email e enviamos um link para criares uma nova password.",
+                        color = Color.Gray, fontSize = 13.sp)
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = onEmailChange,
+                        label = { Text("Email") },
+                        leadingIcon = { Icon(Icons.Default.Email, null, tint = Color.Gray) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { onSend() }),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = authTextFieldColors()
+                    )
+                    error?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(it, color = Color(0xFFFF6B6B), fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF333333)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Gray)
+                        ) { Text("Cancelar") }
+                        Button(onClick = onSend, enabled = !isLoading, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = VitalGreen)) {
+                            if (isLoading)
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black, strokeWidth = 2.dp)
+                            else
+                                Text("Enviar", color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

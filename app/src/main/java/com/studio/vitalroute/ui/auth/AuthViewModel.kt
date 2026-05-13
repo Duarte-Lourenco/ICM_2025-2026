@@ -21,7 +21,13 @@ data class AuthUiState(
     val isRegisterMode: Boolean = false,
     val isEmailVerificationPending: Boolean = false,
     val pendingEmail: String = "",
-    val verificationEmailSent: Boolean = false
+    val verificationEmailSent: Boolean = false,
+    // Recuperação de password
+    val isForgotPassword: Boolean = false,
+    val forgotEmail: String = "",
+    val forgotLoading: Boolean = false,
+    val forgotError: String? = null,
+    val forgotSuccess: Boolean = false
 )
 
 class AuthViewModel : ViewModel() {
@@ -146,6 +152,38 @@ class AuthViewModel : ViewModel() {
             } catch (e: Exception) {
                 Log.e("AuthViewModel", "Resend failed: ${e.message}")
                 _uiState.update { it.copy(isLoading = false, error = "Erro ao reenviar: ${e.message}") }
+            }
+        }
+    }
+
+    // --- Recuperação de password ---
+
+    fun startForgotPassword(emailPrefill: String = "") {
+        _uiState.update { it.copy(isForgotPassword = true, forgotEmail = emailPrefill,
+            forgotError = null, forgotSuccess = false) }
+    }
+
+    fun cancelForgotPassword() {
+        _uiState.update { it.copy(isForgotPassword = false, forgotError = null, forgotSuccess = false) }
+    }
+
+    fun updateForgotEmail(v: String) {
+        _uiState.update { it.copy(forgotEmail = v) }
+    }
+
+    fun sendPasswordReset() {
+        val email = _uiState.value.forgotEmail.trim()
+        if (email.isBlank()) {
+            _uiState.update { it.copy(forgotError = "Introduz o teu email") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(forgotLoading = true, forgotError = null) }
+            try {
+                auth.sendPasswordResetEmail(email).await()
+                _uiState.update { it.copy(forgotLoading = false, forgotSuccess = true) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(forgotLoading = false, forgotError = parseFirebaseError(e.message)) }
             }
         }
     }
