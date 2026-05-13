@@ -34,6 +34,7 @@ data class HomeUiState(
     val weeklyGoalProgress: Float = 0f,  // 0..1
     val weeklyGoalKm: Float = 100f,
     // Última atividade
+    val lastActivityId: String = "",
     val lastActivityType: String = "",
     val lastActivityDate: String = "",
     val lastActivityDist: String = "—",
@@ -101,10 +102,22 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun loadUserName() {
-        val name = Firebase.auth.currentUser?.displayName
-            ?: Firebase.auth.currentUser?.email?.substringBefore("@")
-            ?: ""
-        _uiState.update { it.copy(userName = name) }
+        // Tenta primeiro o Firestore (fonte primária do nome)
+        viewModelScope.launch {
+            try {
+                val profile = repository.getUserProfile()
+                val name = profile?.name?.takeIf { it.isNotBlank() }
+                    ?: Firebase.auth.currentUser?.displayName?.takeIf { it.isNotBlank() }
+                    ?: Firebase.auth.currentUser?.email?.substringBefore("@")
+                    ?: ""
+                _uiState.update { it.copy(userName = name) }
+            } catch (_: Exception) {
+                val fallback = Firebase.auth.currentUser?.displayName?.takeIf { it.isNotBlank() }
+                    ?: Firebase.auth.currentUser?.email?.substringBefore("@")
+                    ?: ""
+                _uiState.update { it.copy(userName = fallback) }
+            }
+        }
     }
 
     private fun loadActivities() {
@@ -120,6 +133,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                             weeklyKm       = "%.1f".format(weeklyStats.first),
                             weeklyTime     = "${weeklyStats.second} min",
                             weeklyGoalProgress = (weeklyStats.first.toFloat() / state.weeklyGoalKm).coerceIn(0f, 1f),
+                            lastActivityId     = last?.id ?: "",
                             lastActivityType  = last?.type ?: "",
                             lastActivityDate  = last?.let { formatDate(it.startTime) } ?: "",
                             lastActivityDist  = last?.let { "%.1f km".format(it.distanceKm) } ?: "—",

@@ -13,6 +13,7 @@ data class Activity(
     val distanceKm: Double            = 0.0,
     val durationSeconds: Long         = 0L,
     val avgSpeedKmh: Double           = 0.0,
+    val maxSpeedKmh: Double           = 0.0,
     val elevationM: Int               = 0,
     val calories: Int                 = 0,
     // Amostras de altitude recolhidas a cada 30 s (para curva de elevação)
@@ -53,9 +54,12 @@ data class UserSettings(
  * Guardado em: users/{uid}
  */
 data class UserProfile(
-    val uid: String   = "",
-    val name: String  = "",
-    val email: String = ""
+    val uid: String      = "",
+    val name: String     = "",
+    val email: String    = "",
+    val weightKg: Float  = 70f,
+    val heightCm: Int    = 170,
+    val gender: String   = "male"   // "male" | "female"
 )
 
 /**

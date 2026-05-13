@@ -22,9 +22,17 @@ data class SettingsUiState(
     val email: String             = "",
     val offlineStorage: String    = "A calcular…",
     val weeklyGoalKm: Float       = 50f,
+    // Dados físicos
+    val weightKg: Float           = 70f,
+    val heightCm: Int             = 170,
+    val gender: String            = "male",
     // Edição de perfil
     val isEditingName: Boolean    = false,
     val editNameValue: String     = "",
+    val isEditingWeight: Boolean  = false,
+    val editWeightValue: String   = "",
+    val isEditingHeight: Boolean  = false,
+    val editHeightValue: String   = "",
     val isSavingName: Boolean     = false,
     val saveNameError: String?    = null
 )
@@ -72,12 +80,21 @@ class SettingsViewModel : ViewModel() {
 
         _uiState.update { it.copy(email = email, displayName = name, editNameValue = name) }
 
-        // Tenta carregar perfil do Firestore (pode ter nome mais completo)
         viewModelScope.launch {
             try {
                 val profile = repository.getUserProfile()
-                if (profile != null && profile.name.isNotBlank()) {
-                    _uiState.update { it.copy(displayName = profile.name, editNameValue = profile.name) }
+                if (profile != null) {
+                    _uiState.update {
+                        it.copy(
+                            displayName     = profile.name.ifBlank { it.displayName },
+                            editNameValue   = profile.name.ifBlank { it.displayName },
+                            weightKg        = profile.weightKg,
+                            heightCm        = profile.heightCm,
+                            gender          = profile.gender,
+                            editWeightValue = profile.weightKg.toInt().toString(),
+                            editHeightValue = profile.heightCm.toString()
+                        )
+                    }
                 }
             } catch (_: Exception) {}
         }
@@ -99,33 +116,61 @@ class SettingsViewModel : ViewModel() {
         val name = _uiState.value.editNameValue.trim()
         if (name.isBlank()) return
         _uiState.update { it.copy(isSavingName = true, saveNameError = null) }
-
         viewModelScope.launch {
             try {
-                // Atualiza Firebase Auth displayName
                 val user = Firebase.auth.currentUser
-                val request = UserProfileChangeRequest.Builder()
-                    .setDisplayName(name)
-                    .build()
+                val request = UserProfileChangeRequest.Builder().setDisplayName(name).build()
                 user?.updateProfile(request)?.await()
-
-                // Guarda também no Firestore
-                val uid = user?.uid ?: ""
-                val email = user?.email ?: ""
-                repository.saveUserProfile(UserProfile(uid = uid, name = name, email = email))
-
-                _uiState.update { it.copy(
-                    displayName  = name,
-                    isEditingName = false,
-                    isSavingName  = false
-                )}
+                saveProfile(_uiState.value.copy(displayName = name))
+                _uiState.update { it.copy(displayName = name, isEditingName = false, isSavingName = false) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(
-                    isSavingName  = false,
-                    saveNameError = "Erro ao guardar: ${e.message}"
-                )}
+                _uiState.update { it.copy(isSavingName = false, saveNameError = "Erro ao guardar: ${e.message}") }
             }
         }
+    }
+
+    // peso
+    fun startEditWeight() { _uiState.update { it.copy(isEditingWeight = true, editWeightValue = it.weightKg.toInt().toString()) } }
+    fun updateEditWeight(v: String) { _uiState.update { it.copy(editWeightValue = v) } }
+    fun cancelEditWeight() { _uiState.update { it.copy(isEditingWeight = false) } }
+    fun saveWeight() {
+        val w = _uiState.value.editWeightValue.toFloatOrNull() ?: return
+        if (w < 20f || w > 300f) return
+        _uiState.update { it.copy(weightKg = w, isEditingWeight = false) }
+        viewModelScope.launch { saveProfile(_uiState.value) }
+    }
+
+    // altura
+    fun startEditHeight() { _uiState.update { it.copy(isEditingHeight = true, editHeightValue = it.heightCm.toString()) } }
+    fun updateEditHeight(v: String) { _uiState.update { it.copy(editHeightValue = v) } }
+    fun cancelEditHeight() { _uiState.update { it.copy(isEditingHeight = false) } }
+    fun saveHeight() {
+        val h = _uiState.value.editHeightValue.toIntOrNull() ?: return
+        if (h < 100 || h > 250) return
+        _uiState.update { it.copy(heightCm = h, isEditingHeight = false) }
+        viewModelScope.launch { saveProfile(_uiState.value) }
+    }
+
+    // género
+    fun setGender(g: String) {
+        _uiState.update { it.copy(gender = g) }
+        viewModelScope.launch { saveProfile(_uiState.value) }
+    }
+
+    private suspend fun saveProfile(s: SettingsUiState) {
+        val user = Firebase.auth.currentUser ?: return
+        try {
+            repository.saveUserProfile(
+                UserProfile(
+                    uid      = user.uid,
+                    name     = s.displayName,
+                    email    = user.email ?: "",
+                    weightKg = s.weightKg,
+                    heightCm = s.heightCm,
+                    gender   = s.gender
+                )
+            )
+        } catch (_: Exception) {}
     }
 
     // preferências

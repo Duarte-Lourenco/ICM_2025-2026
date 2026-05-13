@@ -1,6 +1,7 @@
 package com.studio.vitalroute.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,12 +18,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
 import com.studio.vitalroute.ui.theme.*
 import com.studio.vitalroute.ui.components.SectionHeader
 import com.studio.vitalroute.ui.components.SensorRow
 
 @Composable
-fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
+fun HomeScreen(navController: NavHostController, viewModel: HomeViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Column(
@@ -110,7 +112,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
         // esta semana
         SectionHeader("ESTA SEMANA")
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().clickable { navController.navigate("perfil") },
             colors = CardDefaults.cardColors(containerColor = CardGray),
             shape = RoundedCornerShape(16.dp)
         ) {
@@ -150,7 +152,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
         SectionHeader("ÚLTIMA ATIVIDADE")
         if (uiState.lastActivityDate.isEmpty()) {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable { navController.navigate("perfil") },
                 colors = CardDefaults.cardColors(containerColor = CardGray),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -167,7 +169,12 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
             }
         } else {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable {
+                    if (uiState.lastActivityId.isNotEmpty())
+                        navController.navigate("activity/${uiState.lastActivityId}")
+                    else
+                        navController.navigate("perfil")
+                },
                 colors = CardDefaults.cardColors(containerColor = CardGray),
                 shape = RoundedCornerShape(12.dp)
             ) {

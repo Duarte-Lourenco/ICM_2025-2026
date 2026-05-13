@@ -29,9 +29,12 @@ import com.studio.vitalroute.ui.theme.*
 fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    var name     by remember { mutableStateOf("") }
-    var email    by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var name         by remember { mutableStateOf("") }
+    var email        by remember { mutableStateOf("") }
+    var password     by remember { mutableStateOf("") }
+    var weightInput  by remember { mutableStateOf("") }
+    var heightInput  by remember { mutableStateOf("") }
+    var gender       by remember { mutableStateOf("male") }
     var showPassword by remember { mutableStateOf(false) }
 
     Column(
@@ -80,7 +83,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
 
         Spacer(Modifier.height(20.dp))
 
-        // campo nome (só no registo)
+        // campos extra (só no registo)
         if (uiState.isRegisterMode) {
             AuthTextField(
                 value         = name,
@@ -89,6 +92,51 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
                 icon          = Icons.Default.Person,
                 imeAction     = ImeAction.Next
             )
+            Spacer(Modifier.height(12.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                AuthTextField(
+                    value         = weightInput,
+                    onValueChange = { weightInput = it },
+                    label         = "Peso (kg)",
+                    icon          = Icons.Default.MonitorWeight,
+                    keyboardType  = KeyboardType.Number,
+                    imeAction     = ImeAction.Next,
+                    modifier      = Modifier.weight(1f)
+                )
+                AuthTextField(
+                    value         = heightInput,
+                    onValueChange = { heightInput = it },
+                    label         = "Altura (cm)",
+                    icon          = Icons.Default.Height,
+                    keyboardType  = KeyboardType.Number,
+                    imeAction     = ImeAction.Next,
+                    modifier      = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+
+            // seletor de género
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.Person, null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                listOf("male" to "Masculino", "female" to "Feminino").forEach { (key, label) ->
+                    FilterChip(
+                        selected = gender == key,
+                        onClick  = { gender = key },
+                        label    = { Text(label) },
+                        colors   = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = VitalGreen.copy(alpha = 0.2f),
+                            selectedLabelColor     = VitalGreen,
+                            containerColor         = Color(0xFF111111),
+                            labelColor             = Color.Gray
+                        )
+                    )
+                }
+            }
             Spacer(Modifier.height(12.dp))
         }
 
@@ -155,8 +203,15 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
         // botão principal
         Button(
             onClick = {
-                if (uiState.isRegisterMode) viewModel.signUp(name, email, password)
-                else                        viewModel.signIn(email, password)
+                if (uiState.isRegisterMode) viewModel.signUp(
+                    name     = name,
+                    email    = email,
+                    password = password,
+                    weightKg = weightInput.toFloatOrNull() ?: 0f,
+                    heightCm = heightInput.toIntOrNull() ?: 0,
+                    gender   = gender
+                )
+                else viewModel.signIn(email, password)
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -187,7 +242,7 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
         // toggle login / registo
         TextButton(onClick = {
             viewModel.toggleMode()
-            name = ""; email = ""; password = ""
+            name = ""; email = ""; password = ""; weightInput = ""; heightInput = ""; gender = "male"
         }) {
             Text(
                 text  = if (uiState.isRegisterMode)
@@ -242,7 +297,8 @@ private fun AuthTextField(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     keyboardType: KeyboardType = KeyboardType.Text,
-    imeAction: ImeAction = ImeAction.Next
+    imeAction: ImeAction = ImeAction.Next,
+    modifier: Modifier = Modifier.fillMaxWidth()
 ) {
     OutlinedTextField(
         value         = value,
@@ -253,7 +309,7 @@ private fun AuthTextField(
             keyboardType = keyboardType,
             imeAction    = imeAction
         ),
-        modifier   = Modifier.fillMaxWidth(),
+        modifier   = modifier,
         shape      = RoundedCornerShape(12.dp),
         colors     = authTextFieldColors(),
         singleLine = true

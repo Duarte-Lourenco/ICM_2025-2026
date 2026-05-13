@@ -44,6 +44,7 @@ data class RecordingServiceState(
     val elapsedSeconds: Long    = 0L,
     val distanceKm: Double      = 0.0,
     val speedKmh: Double        = 0.0,
+    val maxSpeedKmh: Double     = 0.0,
     val elevationM: Int         = 0,
     val calories: Int           = 0,
     val startTimeMs: Long       = 0L,
@@ -86,6 +87,7 @@ class RecordingService : Service(), SensorEventListener {
         const val EXTRA_ROUTE_DEVIATION_ENABLED = "route_deviation_enabled" // Boolean
         const val EXTRA_LOCATION_SHARING        = "location_sharing"       // Boolean
         const val EXTRA_ARRIVAL_ALERT_ENABLED   = "arrival_alert_enabled"  // Boolean
+        const val EXTRA_WEIGHT_KG               = "weight_kg"              // Float
 
         // Notificação de chegada a zona segura
         const val CHANNEL_ARRIVAL_ID    = "vitalroute_arrival"
@@ -130,9 +132,13 @@ class RecordingService : Service(), SensorEventListener {
     private var anomalousSpeedStart    = 0L
     private var lastLocationTimestamp  = 0L
 
+    // Perfil do utilizador para cálculo de calorias
+    private var userWeightKg              = 70.0
+
     // Partilha de localização em tempo real
-    private var locationSharingEnabled = false
-    private val firestoreRepository    = FirestoreRepository()
+    private var locationSharingEnabled    = false
+    private var locationSharingSmsSent    = false  // evita enviar o SMS inicial antes de ter GPS
+    private val firestoreRepository       = FirestoreRepository()
 
     // Geofencing
     private var arrivalAlertEnabled    = false
@@ -144,6 +150,16 @@ class RecordingService : Service(), SensorEventListener {
     private val routeSamples           = mutableListOf<String>() // "lat,lng" a cada ~60 s
     private var lastElevationSampleSec = 0L   // elapsedSeconds na última amostra de elevação
     private var lastRouteSampleSec     = 0L   // elapsedSeconds na última amostra de rota
+
+    // Calorias acumuladas incrementalmente (só conta quando em movimento)
+    private var caloriesAccumulated    = 0.0
+
+    // Velocidade máxima registada durante a atividade
+    private var maxSpeedKmh            = 0.0
+
+    // Elevação acumulada (só conta subidas reais, filtra ruído GPS)
+    private var elevationGainM         = 0.0
+    private var lastAltitudeM          = Double.NaN
 
     // Configuração
     private var activityType         = "cycling"
@@ -179,6 +195,7 @@ class RecordingService : Service(), SensorEventListener {
                 routeDeviationEnabled  = intent.getBooleanExtra(EXTRA_ROUTE_DEVIATION_ENABLED, false)
                 locationSharingEnabled = intent.getBooleanExtra(EXTRA_LOCATION_SHARING, false)
                 arrivalAlertEnabled    = intent.getBooleanExtra(EXTRA_ARRIVAL_ALERT_ENABLED, false)
+                userWeightKg           = intent.getFloatExtra(EXTRA_WEIGHT_KG, 70f).toDouble()
                 startRecording()
             }
             ACTION_STOP      -> stopRecording()
@@ -251,10 +268,22 @@ class RecordingService : Service(), SensorEventListener {
         stopAccelerometer()
         // Para de partilhar localização ao terminar a gravação
         if (locationSharingEnabled) {
+            val type = _state.value.activityType
             serviceScope.launch(Dispatchers.IO) {
                 firestoreRepository.stopLiveLocation()
+                SosManager.sendLocationUpdate(
+                    context      = this@RecordingService,
+                    location     = null,
+                    activityType = type,
+                    isFinal      = true
+                )
             }
         }
+        locationSharingSmsSent = false
+        caloriesAccumulated    = 0.0
+        elevationGainM         = 0.0
+        lastAltitudeM          = Double.NaN
+        maxSpeedKmh            = 0.0
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         safeZones.clear()
@@ -282,10 +311,7 @@ class RecordingService : Service(), SensorEventListener {
             while (true) {
                 delay(1_000L)
                 _state.update { s ->
-                    s.copy(
-                        elapsedSeconds = s.elapsedSeconds + 1,
-                        calories = estimateCalories(s.elapsedSeconds + 1, s.speedKmh, s.activityType)
-                    )
+                    s.copy(elapsedSeconds = s.elapsedSeconds + 1)
                 }
                 updateNotification()
             }
@@ -325,38 +351,85 @@ class RecordingService : Service(), SensorEventListener {
 
         override fun onLocationChanged(location: Location) {
             lastKnownLocation = location
-            val now  = System.currentTimeMillis()
-            val last = lastLocation
+
+            if (locationSharingEnabled && !locationSharingSmsSent) {
+                locationSharingSmsSent = true
+                serviceScope.launch(Dispatchers.IO) {
+                    SosManager.sendLocationUpdate(
+                        context      = applicationContext,
+                        location     = location,
+                        activityType = _state.value.activityType
+                    )
+                }
+            }
+            val now           = System.currentTimeMillis()
+            val last          = lastLocation
+            val prevTimestamp = lastLocationTimestamp
+
+            val speedMs  = if (location.hasSpeed() && location.speed > 0f) location.speed else 0f
+            val speedKmh = speedMs * 3.6f
+            if (speedKmh > maxSpeedKmh) maxSpeedKmh = speedKmh.toDouble()
 
             if (last != null) {
-                val deltaM   = last.distanceTo(location)
-                val deltaMs  = now - lastLocationTimestamp
+                val deltaMs      = now - prevTimestamp
+                val positionDeltaM = last.distanceTo(location)
 
-                // desvio de rota: salto gps anómalo
+                val distanceDelta: Float = when {
+                    // 1ª opção: velocidade Doppler × tempo — precisa e sem ruído de posição
+                    speedMs > 0.3f && deltaMs in 200L..10_000L ->
+                        speedMs * (deltaMs / 1000f)
+                    // 2ª opção: diferença de posição com filtro de precisão GPS
+                    location.accuracy < 15f && positionDeltaM in 5f..300f ->
+                        positionDeltaM
+                    else -> 0f
+                }
+
+                if (distanceDelta > 0f) {
+                    totalDistanceM += distanceDelta
+                    lastMovementTime = now
+                }
+
+                // desvio de rota: salto GPS anómalo
                 if (routeDeviationEnabled
                     && !_state.value.isSosCountdown
                     && _state.value.elapsedSeconds > 120
                     && deltaMs in 1_000L..ROUTE_DEVIATION_JUMP_MS
-                    && deltaM > ROUTE_DEVIATION_JUMP_M
+                    && positionDeltaM > ROUTE_DEVIATION_JUMP_M
                 ) {
-                    val impliedSpeedKmh = (deltaM / (deltaMs / 1000f)) * 3.6f
+                    val impliedSpeedKmh = (positionDeltaM / (deltaMs / 1000f)) * 3.6f
                     if (impliedSpeedKmh > ANOMALOUS_SPEED_KMH) {
                         _state.update { it.copy(lastAlertLabel = "Salto GPS anómalo detetado!") }
                         triggerSosCountdown("Desvio de rota detetado! A enviar SOS em...")
                     }
                 }
-
-                if (deltaM < 500f) {
-                    totalDistanceM += deltaM
-                    if (deltaM > 1f) lastMovementTime = now
-                }
             }
             lastLocation          = location
             lastLocationTimestamp = now
 
-            val speedKmh = if (location.hasSpeed()) location.speed * 3.6f else 0f
-            val altM     = if (location.hasAltitude()) location.altitude.toInt() else 0
-            val distKm   = totalDistanceM / 1000.0
+            val distKm = totalDistanceM / 1000.0
+
+            // acumula ganho de elevação (só subidas reais, ignora ruído < 5 m)
+            val rawAlt = if (location.hasAltitude()) location.altitude else Double.NaN
+            if (!rawAlt.isNaN()) {
+                if (!lastAltitudeM.isNaN()) {
+                    val delta = rawAlt - lastAltitudeM
+                    if (delta >= 5.0) {
+                        elevationGainM += delta
+                        lastAltitudeM = rawAlt
+                    } else if (delta <= -5.0) {
+                        lastAltitudeM = rawAlt  // atualiza referência em descida sem acumular
+                    }
+                } else {
+                    lastAltitudeM = rawAlt
+                }
+            }
+            val altM = elevationGainM.toInt()
+
+            // acumula calorias só quando em movimento (> 1 km/h)
+            if (speedKmh >= 1.0f && last != null && prevTimestamp > 0L) {
+                val deltaSecs = (now - prevTimestamp) / 1000.0
+                caloriesAccumulated += metForSpeed(speedKmh.toDouble(), _state.value.activityType) * userWeightKg * (deltaSecs / 3600.0)
+            }
 
             // desvio de rota: velocidade anómala sustentada
             if (routeDeviationEnabled && !_state.value.isSosCountdown) {
@@ -389,8 +462,9 @@ class RecordingService : Service(), SensorEventListener {
                 s.copy(
                     distanceKm      = distKm,
                     speedKmh        = speedKmh.toDouble(),
+                    maxSpeedKmh     = maxSpeedKmh,
                     elevationM      = altM,
-                    calories        = estimateCalories(s.elapsedSeconds, speedKmh.toDouble(), s.activityType),
+                    calories        = caloriesAccumulated.toInt(),
                     currentLat      = location.latitude,
                     currentLng      = location.longitude,
                     elevationPoints = elevationSamples.toList(),
@@ -586,18 +660,36 @@ class RecordingService : Service(), SensorEventListener {
 
     private fun startLocationSharing() {
         _state.update { it.copy(isLocationSharing = true) }
+
+        locationSharingSmsSent = false  // SMS inicial enviado assim que o GPS tiver fix
+
+        var smsTickCounter = 0
         locationSharingJob = serviceScope.launch {
             while (true) {
-                delay(10_000L) // atualiza a cada 10 segundos
+                delay(10_000L) // atualiza Firestore a cada 10 segundos
                 if (!_state.value.isRecording) break
                 val loc = lastKnownLocation ?: continue
+
                 launch(Dispatchers.IO) {
                     firestoreRepository.updateLiveLocation(
-                        lat       = loc.latitude,
-                        lng       = loc.longitude,
-                        speedKmh  = _state.value.speedKmh,
-                        distKm    = _state.value.distanceKm
+                        lat      = loc.latitude,
+                        lng      = loc.longitude,
+                        speedKmh = _state.value.speedKmh,
+                        distKm   = _state.value.distanceKm
                     )
+                }
+
+                // SMS de atualização a cada 5 minutos (30 × 10s)
+                smsTickCounter++
+                if (smsTickCounter >= 30) {
+                    smsTickCounter = 0
+                    launch(Dispatchers.IO) {
+                        SosManager.sendLocationUpdate(
+                            context      = this@RecordingService,
+                            location     = loc,
+                            activityType = _state.value.activityType
+                        )
+                    }
                 }
             }
         }
@@ -743,39 +835,33 @@ class RecordingService : Service(), SensorEventListener {
      *   Corrida:  6.0 (< 6 km/h)  → 14.5 (> 18 km/h)
      *   Caminhada: 2.5 (< 2 km/h) →  5.0 (> 6 km/h)
      */
-    private fun estimateCalories(secs: Long, speedKmh: Double, type: String): Int {
-        if (secs < 1) return 0
-        val met = when (type) {
-            "running" -> when {
-                speedKmh < 6.0  -> 6.0
-                speedKmh < 8.0  -> 8.3
-                speedKmh < 10.0 -> 9.8
-                speedKmh < 12.0 -> 11.0
-                speedKmh < 14.0 -> 11.8
-                speedKmh < 16.0 -> 12.8
-                speedKmh < 18.0 -> 14.0
-                else             -> 14.5
-            }
-            "walking" -> when {
-                speedKmh < 2.0  -> 2.5
-                speedKmh < 3.5  -> 3.0
-                speedKmh < 5.0  -> 3.5
-                speedKmh < 6.0  -> 4.3
-                speedKmh < 7.0  -> 5.0
-                else             -> 6.0   // marcha rápida
-            }
-            else -> when { // ciclismo
-                speedKmh < 10.0 -> 4.0
-                speedKmh < 16.0 -> 5.8
-                speedKmh < 20.0 -> 7.0
-                speedKmh < 25.0 -> 8.5
-                speedKmh < 30.0 -> 10.0
-                else             -> 12.0
-            }
+    private fun metForSpeed(speedKmh: Double, type: String): Double = when (type) {
+        "running" -> when {
+            speedKmh < 6.0  -> 6.0
+            speedKmh < 8.0  -> 8.3
+            speedKmh < 10.0 -> 9.8
+            speedKmh < 12.0 -> 11.0
+            speedKmh < 14.0 -> 11.8
+            speedKmh < 16.0 -> 12.8
+            speedKmh < 18.0 -> 14.0
+            else             -> 14.5
         }
-        val weightKg = 70.0
-        val hours    = secs / 3600.0
-        return (met * weightKg * hours).toInt()
+        "walking" -> when {
+            speedKmh < 2.0  -> 2.5
+            speedKmh < 3.5  -> 3.0
+            speedKmh < 5.0  -> 3.5
+            speedKmh < 6.0  -> 4.3
+            speedKmh < 7.0  -> 5.0
+            else             -> 6.0
+        }
+        else -> when { // ciclismo
+            speedKmh < 10.0 -> 4.0
+            speedKmh < 16.0 -> 5.8
+            speedKmh < 20.0 -> 7.0
+            speedKmh < 25.0 -> 8.5
+            speedKmh < 30.0 -> 10.0
+            else             -> 12.0
+        }
     }
 
     /** Interpolação linear entre dois valores */

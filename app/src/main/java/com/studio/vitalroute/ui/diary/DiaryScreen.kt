@@ -2,6 +2,7 @@ package com.studio.vitalroute.ui.diary
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -196,7 +197,11 @@ fun DiaryScreen(
             } else {
                 val maxElev = uiState.activities.maxOfOrNull { it.elevationM }?.takeIf { it > 0 } ?: 1
                 uiState.activities.forEach { activity ->
-                    ActivityCard(activity, maxElevationM = maxElev)
+                    ActivityCard(
+                        activity     = activity,
+                        maxElevationM = maxElev,
+                        onClick      = { navController.navigate("activity/${activity.id}") }
+                    )
                     Spacer(Modifier.height(8.dp))
                 }
             }
@@ -239,9 +244,9 @@ private fun PersonalBestRow(icon: ImageVector, label: String, value: String) {
 }
 
 @Composable
-private fun ActivityCard(activity: ActivityUiItem, maxElevationM: Int = 1) {
+private fun ActivityCard(activity: ActivityUiItem, maxElevationM: Int = 1, onClick: () -> Unit = {}) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = CardGray),
         shape = RoundedCornerShape(12.dp)
     ) {

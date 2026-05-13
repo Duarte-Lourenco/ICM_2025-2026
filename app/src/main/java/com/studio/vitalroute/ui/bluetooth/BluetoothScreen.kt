@@ -1,5 +1,13 @@
 package com.studio.vitalroute.ui.bluetooth
 
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -39,6 +47,54 @@ fun BluetoothScreen(
     val context = LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.init(context) }
+
+    // Permissões BLE necessárias consoante a versão do Android
+    val blePermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+    } else {
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    var showBtOffWarning by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.all { it }) {
+            val btAdapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+            if (btAdapter?.isEnabled == false) {
+                showBtOffWarning = true
+            } else {
+                viewModel.startScan(context)
+            }
+        }
+    }
+
+    val enableBtLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        viewModel.startScan(context)
+    }
+
+    if (showBtOffWarning) {
+        AlertDialog(
+            onDismissRequest = { showBtOffWarning = false },
+            containerColor   = Color(0xFF1E1E1E),
+            title  = { Text("Bluetooth desligado", color = Color.White, fontWeight = FontWeight.Bold) },
+            text   = { Text("Liga o Bluetooth para procurar dispositivos.", color = Color.Gray) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBtOffWarning = false
+                    enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+                }) { Text("Ligar", color = VitalGreen, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBtOffWarning = false }) {
+                    Text("Cancelar", color = Color.Gray)
+                }
+            }
+        )
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(DarkBackground)) {
 
@@ -208,8 +264,11 @@ fun BluetoothScreen(
 
                 Button(
                     onClick = {
-                        if (uiState.isScanning) viewModel.stopScan()
-                        else viewModel.startScan(context)
+                        if (uiState.isScanning) {
+                            viewModel.stopScan()
+                        } else {
+                            permissionLauncher.launch(blePermissions)
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (uiState.isScanning) Color.DarkGray else VitalGreen

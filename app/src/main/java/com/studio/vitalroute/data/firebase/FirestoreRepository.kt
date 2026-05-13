@@ -64,11 +64,22 @@ class FirestoreRepository {
             .addSnapshotListener { snapshot, error ->
                 if (error != null) { close(error); return@addSnapshotListener }
                 val list = snapshot?.documents
-                    ?.mapNotNull { it.toObject<Activity>() }
+                    ?.mapNotNull { doc ->
+                        doc.toObject<Activity>()?.let { a ->
+                            if (a.id.isEmpty()) a.copy(id = doc.id) else a
+                        }
+                    }
                     ?: emptyList()
                 trySend(list)
             }
         awaitClose { listener.remove() }
+    }
+
+    suspend fun getActivityById(activityId: String): Activity? {
+        val doc = activitiesRef().document(activityId).get().await()
+        return doc.toObject<Activity>()?.let { a ->
+            if (a.id.isEmpty()) a.copy(id = doc.id) else a
+        }
     }
 
     suspend fun deleteActivity(activityId: String) {

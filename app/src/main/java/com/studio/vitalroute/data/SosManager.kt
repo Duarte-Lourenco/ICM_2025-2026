@@ -83,6 +83,63 @@ object SosManager {
             SmsManager.getDefault()
         }
 
+    /**
+     * Envia SMS de tracking de localização a todos os contactos SOS.
+     * Usado pela partilha de localização em tempo real.
+     */
+    suspend fun sendLocationUpdate(
+        context: Context,
+        location: android.location.Location?,
+        activityType: String,
+        isFinal: Boolean = false
+    ) {
+        val contacts = try {
+            FirestoreRepository()
+                .getContactsOnce()
+                .filter { it.sosEnabled && it.phone.isNotBlank() }
+        } catch (_: Exception) { emptyList() }
+
+        if (contacts.isEmpty()) return
+
+        val message = buildLocationMessage(location, activityType, isFinal)
+        val smsManager = getSmsManager(context)
+
+        contacts.forEach { contact ->
+            try {
+                if (message.length > 160) {
+                    val parts = smsManager.divideMessage(message)
+                    smsManager.sendMultipartTextMessage(contact.phone, null, parts, null, null)
+                } else {
+                    smsManager.sendTextMessage(contact.phone, null, message, null, null)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun buildLocationMessage(
+        location: android.location.Location?,
+        activityType: String,
+        isFinal: Boolean
+    ): String {
+        val type = when (activityType) {
+            "running" -> "corrida"
+            "walking" -> "caminhada"
+            else      -> "ciclismo"
+        }
+        return if (isFinal) {
+            "[VitalRoute] A tua atividade de $type terminou."
+        } else {
+            val locPart = if (location != null) {
+                val lat = "%.5f".format(Locale.US, location.latitude)
+                val lon = "%.5f".format(Locale.US, location.longitude)
+                " Localizacao: https://maps.google.com/?q=$lat,$lon"
+            } else {
+                " (GPS a iniciar)"
+            }
+            "[VitalRoute] A fazer $type.$locPart"
+        }
+    }
+
     /** Acesso público ao SmsManager para uso externo (ex: RecordingService para geofencing). */
     @Suppress("DEPRECATION")
     fun getSmsManagerPublic(context: Context): SmsManager = getSmsManager(context)

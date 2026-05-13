@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
@@ -64,6 +65,75 @@ fun SettingsScreen(
                 onClick = { viewModel.startEditName() }
             )
             SettingsItem(Icons.Default.Email, "Email", uiState.email.ifBlank { "—" })
+
+            // Peso
+            SettingsItem(
+                icon  = Icons.Default.MonitorWeight,
+                title = "Peso",
+                sub   = "${uiState.weightKg.toInt()} kg",
+                onClick = { viewModel.startEditWeight() }
+            )
+            if (uiState.isEditingWeight) {
+                ProfileEditField(
+                    label        = "Peso (kg)",
+                    value        = uiState.editWeightValue,
+                    keyboardType = KeyboardType.Number,
+                    onValueChange = { viewModel.updateEditWeight(it) },
+                    onSave       = { viewModel.saveWeight() },
+                    onCancel     = { viewModel.cancelEditWeight() }
+                )
+            }
+
+            // Altura
+            SettingsItem(
+                icon  = Icons.Default.Height,
+                title = "Altura",
+                sub   = "${uiState.heightCm} cm",
+                onClick = { viewModel.startEditHeight() }
+            )
+            if (uiState.isEditingHeight) {
+                ProfileEditField(
+                    label        = "Altura (cm)",
+                    value        = uiState.editHeightValue,
+                    keyboardType = KeyboardType.Number,
+                    onValueChange = { viewModel.updateEditHeight(it) },
+                    onSave       = { viewModel.saveHeight() },
+                    onCancel     = { viewModel.cancelEditHeight() }
+                )
+            }
+
+            // Género
+            Card(
+                colors   = CardDefaults.cardColors(CardGray),
+                modifier = Modifier.fillMaxWidth(),
+                shape    = RoundedCornerShape(12.dp)
+            ) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Person, null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("Género", color = Color.White, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("male" to "Masculino", "female" to "Feminino").forEach { (key, label) ->
+                            FilterChip(
+                                selected = uiState.gender == key,
+                                onClick  = { viewModel.setGender(key) },
+                                label    = { Text(label, fontSize = 13.sp) },
+                                colors   = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFF1565C0),
+                                    selectedLabelColor     = Color.White,
+                                    containerColor         = Color(0xFF1A2A3A),
+                                    labelColor             = Color.Gray
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+
             SettingsItem(Icons.Default.Lock, "Segurança", "Alterar palavra-passe")
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -210,6 +280,48 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProfileEditField(
+    label: String,
+    value: String,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    onValueChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Card(
+        colors   = CardDefaults.cardColors(Color(0xFF0D1F2D)),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+        shape    = RoundedCornerShape(12.dp)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            OutlinedTextField(
+                value         = value,
+                onValueChange = onValueChange,
+                label         = { Text(label, color = Color.Gray, fontSize = 12.sp) },
+                singleLine    = true,
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onSave() }),
+                colors        = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor    = Color.White,
+                    unfocusedTextColor  = Color.White,
+                    focusedBorderColor  = Color(0xFF1565C0),
+                    unfocusedBorderColor = Color.Gray
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onCancel) { Text("Cancelar", color = Color.Gray) }
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = onSave,
+                    colors  = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
+                ) { Text("Guardar") }
             }
         }
     }

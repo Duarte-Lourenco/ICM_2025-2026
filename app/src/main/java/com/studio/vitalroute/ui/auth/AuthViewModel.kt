@@ -52,7 +52,7 @@ class AuthViewModel : ViewModel() {
         }
     }
 // registo
-    fun signUp(name: String, email: String, password: String) {
+    fun signUp(name: String, email: String, password: String, weightKg: Float, heightCm: Int, gender: String) {
         if (name.isBlank() || email.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(error = "Preenche todos os campos") }
             return
@@ -61,17 +61,32 @@ class AuthViewModel : ViewModel() {
             _uiState.update { it.copy(error = "A password deve ter pelo menos 6 caracteres") }
             return
         }
+        if (weightKg !in 20f..250f) {
+            _uiState.update { it.copy(error = "Peso inválido (20 – 250 kg)") }
+            return
+        }
+        if (heightCm !in 100..230) {
+            _uiState.update { it.copy(error = "Altura inválida (100 – 230 cm)") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val result = auth.createUserWithEmailAndPassword(email.trim(), password).await()
                 val uid = result.user?.uid ?: error("UID nulo após registo")
-                repository.saveUserProfile(UserProfile(uid = uid, name = name.trim(), email = email.trim()))        // para gurdar o perfil
+                repository.saveUserProfile(
+                    UserProfile(
+                        uid      = uid,
+                        name     = name.trim(),
+                        email    = email.trim(),
+                        weightKg = weightKg,
+                        heightCm = heightCm,
+                        gender   = gender
+                    )
+                )
                 _uiState.update { it.copy(isLoading = false, isLoggedIn = true) }
             } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(isLoading = false, error = parseFirebaseError(e.message))
-                }
+                _uiState.update { it.copy(isLoading = false, error = parseFirebaseError(e.message)) }
             }
         }
     }

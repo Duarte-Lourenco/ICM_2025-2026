@@ -64,6 +64,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private var sosDelaySecs           = 15
     private var routeDeviationEnabled  = false
     private var arrivalAlertEnabled    = false
+    private var userWeightKg           = 70f
 
     init {
         // Observa o estado do serviço em tempo real
@@ -101,9 +102,15 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 sosDelaySecs          = settings.sosCountdownSecs
                 routeDeviationEnabled = settings.routeDeviationEnabled
                 arrivalAlertEnabled   = settings.arrivalAlertEnabled
-            } catch (_: Exception) {
-                // Mantém os valores por omissão se offline
-            }
+            } catch (_: Exception) {}
+        }
+        viewModelScope.launch {
+            try {
+                val profile = repository.getUserProfile()
+                if (profile != null && profile.weightKg > 0f) {
+                    userWeightKg = profile.weightKg
+                }
+            } catch (_: Exception) {}
         }
     }
 
@@ -129,15 +136,20 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
             else      -> "ciclismo"
         }
         val mapsUrl = if (s.currentLat != 0.0 || s.currentLng != 0.0) {
-            val lat = "%.5f".format(s.currentLat)
-            val lng = "%.5f".format(s.currentLng)
+            val lat = "%.5f".format(java.util.Locale.US, s.currentLat)
+            val lng = "%.5f".format(java.util.Locale.US, s.currentLng)
             "https://maps.google.com/?q=$lat,$lng"
         } else {
-            "https://maps.google.com"
+            null
         }
-        val text = "Estou a fazer $type com o VitalRoute e a partilhar a minha localização.\n" +
-            "Última posição conhecida: $mapsUrl\n" +
+        val text = if (mapsUrl != null) {
+            "VitalRoute — Localização em tempo real ($type):\n$mapsUrl\n" +
+            "(Link atualizado — toca para abrir no Google Maps)\n" +
             "-- Enviado automaticamente pela app VitalRoute --"
+        } else {
+            "VitalRoute — A aguardar sinal GPS para partilhar localização ($type).\n" +
+            "-- Enviado automaticamente pela app VitalRoute --"
+        }
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("VitalRoute localização", text))
     }
@@ -165,6 +177,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
             putExtra(RecordingService.EXTRA_ROUTE_DEVIATION_ENABLED, routeDeviationEnabled)
             putExtra(RecordingService.EXTRA_LOCATION_SHARING,        state.locationSharingEnabled)
             putExtra(RecordingService.EXTRA_ARRIVAL_ALERT_ENABLED,   arrivalAlertEnabled)
+            putExtra(RecordingService.EXTRA_WEIGHT_KG,               userWeightKg)
         }
         ctx.startForegroundService(intent)
     }
@@ -185,6 +198,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                             distanceKm      = s.distanceKm,
                             durationSeconds = s.elapsedSeconds,
                             avgSpeedKmh     = s.speedKmh,
+                            maxSpeedKmh     = s.maxSpeedKmh,
                             elevationM      = s.elevationM,
                             calories        = s.calories,
                             elevationPoints = s.elevationPoints,

@@ -17,10 +17,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.studio.vitalroute.ui.theme.*
 import com.studio.vitalroute.ui.home.HomeScreen
 import com.studio.vitalroute.ui.maps.MapsScreen
@@ -29,6 +31,7 @@ import com.studio.vitalroute.ui.security.SecurityScreen
 import com.studio.vitalroute.ui.diary.DiaryScreen
 import com.studio.vitalroute.ui.settings.SettingsScreen
 import com.studio.vitalroute.ui.bluetooth.BluetoothScreen
+import com.studio.vitalroute.ui.diary.ActivityDetailScreen
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Inicio : Screen("inicio", "Início", Icons.Default.Home)
@@ -47,7 +50,10 @@ fun VitalRouteNavGraph(onSignOut: () -> Unit = {}) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            if (currentRoute != "settings") {
+            val hideBar = currentRoute == "settings" ||
+                currentRoute == "bluetooth" ||
+                currentRoute?.startsWith("activity/") == true
+            if (!hideBar) {
                 VitalBottomBar(navController)
             }
         },
@@ -58,13 +64,20 @@ fun VitalRouteNavGraph(onSignOut: () -> Unit = {}) {
             startDestination = Screen.Inicio.route,
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Inicio.route) { HomeScreen() }
+            composable(Screen.Inicio.route) { HomeScreen(navController) }
             composable(Screen.Mapas.route) { MapsScreen() }
             composable(Screen.Iniciar.route) { RecordingScreen() }
             composable(Screen.Seguranca.route) { SecurityScreen() }
             composable(Screen.Perfil.route) { DiaryScreen(navController) }
             composable("settings")   { SettingsScreen(navController, onSignOut = onSignOut) }
             composable("bluetooth")  { BluetoothScreen(navController) }
+            composable(
+                route = "activity/{activityId}",
+                arguments = listOf(navArgument("activityId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val id = backStackEntry.arguments?.getString("activityId") ?: ""
+                ActivityDetailScreen(activityId = id, navController = navController)
+            }
         }
     }
 }
