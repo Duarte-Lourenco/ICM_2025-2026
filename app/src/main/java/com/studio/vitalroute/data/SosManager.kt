@@ -5,6 +5,7 @@ import android.location.Location
 import android.os.Build
 import android.telephony.SmsManager
 import com.studio.vitalroute.data.firebase.FirestoreRepository
+import java.util.Locale
 
 //
 //
@@ -62,8 +63,8 @@ object SosManager {
 
     private fun buildMessage(location: Location?): String {
         val locPart = if (location != null) {
-            val lat = "%.5f".format(location.latitude)
-            val lon = "%.5f".format(location.longitude)
+            val lat = "%.5f".format(Locale.US, location.latitude)
+            val lon = "%.5f".format(Locale.US, location.longitude)
             "\nLocalização: https://maps.google.com/?q=$lat,$lon"
         } else {
             "\n(Localização não disponível)"

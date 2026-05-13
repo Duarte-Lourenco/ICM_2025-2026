@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -119,9 +120,10 @@ class RecordingService : Service(), SensorEventListener {
     // Acelerómetro
     private lateinit var sensorManager: SensorManager
     private var accelerometerSensor: Sensor? = null
-    private var fallSensitivity  = 0.6f  // 0 = baixa, 1 = alta
-    private var lastFallTime     = 0L    // debounce: não re-acionar por 10s
-    private var fallPhase        = FallPhase.NONE
+    private var fallSensitivity   = 0.6f  // 0 = baixa, 1 = alta
+    private var lastFallTime      = 0L    // debounce: não re-acionar por 10s
+    private var fallPhase         = FallPhase.NONE
+    private var freeFallStartTime = 0L    // timestamp de entrada na fase de queda livre
 
     // Desvio de rota
     private var routeDeviationEnabled  = false
@@ -379,7 +381,7 @@ class RecordingService : Service(), SensorEventListener {
             if (elapsed - lastRouteSampleSec >= 60L
                 && (location.latitude != 0.0 || location.longitude != 0.0)
             ) {
-                routeSamples.add("%.6f,%.6f".format(location.latitude, location.longitude))
+                routeSamples.add("%.6f,%.6f".format(Locale.US, location.latitude, location.longitude))
                 lastRouteSampleSec = elapsed
             }
 
@@ -446,8 +448,8 @@ class RecordingService : Service(), SensorEventListener {
         serviceScope.launch(Dispatchers.IO) {
             try {
                 val contacts = firestoreRepository.getZoneContactsOnce()
-                val lat = "%.5f".format(lastKnownLocation?.latitude ?: 0.0)
-                val lon = "%.5f".format(lastKnownLocation?.longitude ?: 0.0)
+                val lat = "%.5f".format(Locale.US, lastKnownLocation?.latitude ?: 0.0)
+                val lon = "%.5f".format(Locale.US, lastKnownLocation?.longitude ?: 0.0)
                 val message = "VitalRoute: ${zone.name} atingida!\n" +
                     "O teu contacto chegou em segurança.\n" +
                     (if (lastKnownLocation != null) "Localização: https://maps.google.com/?q=$lat,$lon\n" else "") +
@@ -501,6 +503,7 @@ class RecordingService : Service(), SensorEventListener {
                 // Fase 1: queda livre (magnitude muito baixa = pouco peso sentido)
                 if (magnitude < freeFallThreshold) {
                     fallPhase = FallPhase.FREE_FALL
+                    freeFallStartTime = now
                 }
             }
             FallPhase.FREE_FALL -> {
@@ -509,10 +512,12 @@ class RecordingService : Service(), SensorEventListener {
                     lastFallTime = now
                     fallPhase = FallPhase.NONE
                     onFallDetected()
-                } else if (magnitude > freeFallThreshold * 2.5f) {
-                    // Movimento normal — reset fase
+                } else if (now - freeFallStartTime > 1500L) {
+                    // Sem impacto em 1.5s — provavelmente não foi uma queda real
                     fallPhase = FallPhase.NONE
                 }
+                // Não reseta por valores intermédios: a transição queda→impacto
+                // passa naturalmente por magnitudes entre o threshold e o impacto
             }
         }
     }
