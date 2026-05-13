@@ -29,6 +29,19 @@ import com.studio.vitalroute.ui.theme.*
 fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    if (uiState.isEmailVerificationPending) {
+        EmailVerificationScreen(
+            email     = uiState.pendingEmail,
+            isLoading = uiState.isLoading,
+            error     = uiState.error,
+            emailSent = uiState.verificationEmailSent,
+            onCheck   = { viewModel.checkEmailVerification() },
+            onResend  = { viewModel.resendVerificationEmail() },
+            onBack    = { viewModel.signOut() }
+        )
+        return
+    }
+
     var name         by remember { mutableStateOf("") }
     var email        by remember { mutableStateOf("") }
     var password     by remember { mutableStateOf("") }
@@ -179,6 +192,16 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
             singleLine = true
         )
 
+        if (uiState.isRegisterMode) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text     = "Mínimo 8 caracteres, com maiúscula, minúscula e número",
+                color    = Color(0xFF666666),
+                fontSize = 11.sp,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
         Spacer(Modifier.height(8.dp))
 
         // erro
@@ -289,6 +312,165 @@ fun LoginScreen(viewModel: AuthViewModel = viewModel()) {
     }
 }
 
+@Composable
+private fun EmailVerificationScreen(
+    email: String,
+    isLoading: Boolean,
+    error: String?,
+    emailSent: Boolean,
+    onCheck: () -> Unit,
+    onResend: () -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(DarkBackground)
+            .padding(horizontal = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.MarkEmailUnread,
+            contentDescription = null,
+            tint     = VitalGreen,
+            modifier = Modifier.size(72.dp)
+        )
+
+        Spacer(Modifier.height(24.dp))
+
+        Text(
+            text       = "Confirma o teu email",
+            color      = Color.White,
+            fontSize   = 24.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign  = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            text      = "Enviámos um link de confirmação para",
+            color     = Color.Gray,
+            fontSize  = 14.sp,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text       = email,
+            color      = VitalGreen,
+            fontSize   = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign  = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            text      = "Abre o email e clica no link para ativar a conta.",
+            color     = Color.Gray,
+            fontSize  = 13.sp,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color    = Color(0xFF1A1A00),
+            shape    = RoundedCornerShape(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp, 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.Warning, null, tint = Color(0xFFFFCC00), modifier = Modifier.size(16.dp))
+                Text(
+                    text     = "Não encontras o email? Verifica também a pasta de spam ou lixo.",
+                    color    = Color(0xFFCCAA00),
+                    fontSize = 12.sp
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        if (emailSent) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color    = Color(0xFF002A00),
+                shape    = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp, 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.CheckCircle, null, tint = VitalGreen, modifier = Modifier.size(16.dp))
+                    Text(
+                        text     = "Email enviado com sucesso!",
+                        color    = VitalGreen,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        error?.let { err ->
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color    = Color(0xFF2A0000),
+                shape    = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text     = err,
+                    color    = Color(0xFFFF6B6B),
+                    modifier = Modifier.padding(12.dp, 10.dp),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        Button(
+            onClick  = onCheck,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp),
+            shape  = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = VitalGreen),
+            enabled = !isLoading
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(22.dp), color = Color.Black, strokeWidth = 2.5.dp)
+            } else {
+                Text("JÁ VERIFIQUEI", color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, letterSpacing = 1.sp)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick  = onResend,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            shape  = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF333333)),
+            enabled = !isLoading
+        ) {
+            Text("Reenviar email", color = Color(0xFF888888), fontSize = 14.sp)
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        TextButton(onClick = onBack) {
+            Text("Voltar ao início de sessão", color = Color(0xFF555555), fontSize = 13.sp)
+        }
+    }
+}
 
 @Composable
 private fun AuthTextField(

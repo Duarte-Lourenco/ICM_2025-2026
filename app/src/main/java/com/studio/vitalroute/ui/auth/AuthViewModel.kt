@@ -1,5 +1,6 @@
 package com.studio.vitalroute.ui.auth
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.ktx.auth
@@ -13,13 +14,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-// estado da autenticação
-
 data class AuthUiState(
-    val isLoading: Boolean   = false,
-    val isLoggedIn: Boolean  = false,
-    val error: String?       = null,
-    val isRegisterMode: Boolean = false
+    val isLoading: Boolean = false,
+    val isLoggedIn: Boolean = false,
+    val error: String? = null,
+    val isRegisterMode: Boolean = false,
+    val isEmailVerificationPending: Boolean = false,
+    val pendingEmail: String = "",
+    val verificationEmailSent: Boolean = false
 )
 
 class AuthViewModel : ViewModel() {
@@ -27,12 +29,16 @@ class AuthViewModel : ViewModel() {
     private val auth = Firebase.auth
     private val repository = FirestoreRepository()
 
-    private val _uiState = MutableStateFlow(AuthUiState(
-        isLoggedIn = auth.currentUser != null
-    ))
+    private val _uiState = MutableStateFlow(
+        auth.currentUser.let { user ->
+            when {
+                user == null -> AuthUiState()
+                user.isEmailVerified -> AuthUiState(isLoggedIn = true)
+                else -> AuthUiState(isEmailVerificationPending = true, pendingEmail = user.email ?: "")
+            }
+        }
+    )
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
-
-// login
 
     fun signIn(email: String, password: String) {
         if (email.isBlank() || password.isBlank()) {
@@ -43,22 +49,37 @@ class AuthViewModel : ViewModel() {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 auth.signInWithEmailAndPassword(email.trim(), password).await()
-                _uiState.update { it.copy(isLoading = false, isLoggedIn = true) }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(isLoading = false, error = parseFirebaseError(e.message))
+                val user = auth.currentUser
+                if (user?.isEmailVerified == true) {
+                    _uiState.update { it.copy(isLoading = false, isLoggedIn = true) }
+                } else {
+                    var emailSentOk = false
+                    try {
+                        user?.sendEmailVerification()?.await()
+                        emailSentOk = true
+                        Log.d("AuthViewModel", "Verification email sent to ${email.trim()}")
+                    } catch (emailEx: Exception) {
+                        Log.e("AuthViewModel", "sendEmailVerification failed: ${emailEx.message}")
+                    }
+                    _uiState.update {
+                        it.copy(isLoading = false, isEmailVerificationPending = true,
+                            pendingEmail = email.trim(), verificationEmailSent = emailSentOk,
+                            error = if (!emailSentOk) "Falhou o envio do email de verificação. Usa 'Reenviar email'." else null)
+                    }
                 }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = parseFirebaseError(e.message)) }
             }
         }
     }
-// registo
+
     fun signUp(name: String, email: String, password: String, weightKg: Float, heightCm: Int, gender: String) {
         if (name.isBlank() || email.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(error = "Preenche todos os campos") }
             return
         }
-        if (password.length < 6) {
-            _uiState.update { it.copy(error = "A password deve ter pelo menos 6 caracteres") }
+        validatePassword(password)?.let { err ->
+            _uiState.update { it.copy(error = err) }
             return
         }
         if (weightKg !in 20f..250f) {
@@ -73,31 +94,69 @@ class AuthViewModel : ViewModel() {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val result = auth.createUserWithEmailAndPassword(email.trim(), password).await()
-                val uid = result.user?.uid ?: error("UID nulo após registo")
+                val user = result.user ?: error("Utilizador nulo após registo")
                 repository.saveUserProfile(
-                    UserProfile(
-                        uid      = uid,
-                        name     = name.trim(),
-                        email    = email.trim(),
-                        weightKg = weightKg,
-                        heightCm = heightCm,
-                        gender   = gender
-                    )
+                    UserProfile(uid = user.uid, name = name.trim(), email = email.trim(),
+                        weightKg = weightKg, heightCm = heightCm, gender = gender)
                 )
-                _uiState.update { it.copy(isLoading = false, isLoggedIn = true) }
+                var emailSentOk = false
+                try {
+                    user.sendEmailVerification().await()
+                    emailSentOk = true
+                    Log.d("AuthViewModel", "Verification email sent to ${email.trim()}")
+                } catch (emailEx: Exception) {
+                    Log.e("AuthViewModel", "sendEmailVerification failed: ${emailEx.message}")
+                }
+                _uiState.update {
+                    it.copy(isLoading = false, isEmailVerificationPending = true,
+                        pendingEmail = email.trim(), verificationEmailSent = emailSentOk,
+                        error = if (!emailSentOk) "Conta criada, mas falhou o envio do email de verificação. Usa 'Reenviar email'." else null)
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = parseFirebaseError(e.message)) }
             }
         }
     }
 
-    fun signInAsGuest() {       // modo de convidado
+    fun checkEmailVerification() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                auth.currentUser?.reload()?.await()
+                if (auth.currentUser?.isEmailVerified == true) {
+                    _uiState.update { it.copy(isLoading = false, isLoggedIn = true, isEmailVerificationPending = false) }
+                } else {
+                    _uiState.update { it.copy(isLoading = false, error = "Email ainda não verificado. Verifica a tua caixa de entrada.") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = parseFirebaseError(e.message)) }
+            }
+        }
+    }
+
+    fun resendVerificationEmail() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null, verificationEmailSent = false) }
+            try {
+                val user = auth.currentUser
+                Log.d("AuthViewModel", "Resend: currentUser=${user?.email}, uid=${user?.uid}")
+                user?.sendEmailVerification()?.await()
+                Log.d("AuthViewModel", "Resend verification email sent to ${user?.email}")
+                _uiState.update { it.copy(isLoading = false, verificationEmailSent = true) }
+            } catch (e: Exception) {
+                Log.e("AuthViewModel", "Resend failed: ${e.message}")
+                _uiState.update { it.copy(isLoading = false, error = "Erro ao reenviar: ${e.message}") }
+            }
+        }
+    }
+
+    fun signInAsGuest() {
         _uiState.update { it.copy(isLoggedIn = true, error = null) }
     }
 
-    fun signOut() {         // logout
+    fun signOut() {
         auth.signOut()
-        _uiState.update { it.copy(isLoggedIn = false) }
+        _uiState.update { it.copy(isLoggedIn = false, isEmailVerificationPending = false, pendingEmail = "") }
     }
 
     fun toggleMode() {
@@ -108,15 +167,23 @@ class AuthViewModel : ViewModel() {
         _uiState.update { it.copy(error = null) }
     }
 
-    private fun parseFirebaseError(message: String?): String = when {       // traduz erros
-        message == null                             -> "Erro desconhecido"
+    private fun validatePassword(password: String): String? = when {
+        password.length < 8               -> "A password deve ter pelo menos 8 caracteres"
+        !password.any { it.isUpperCase() } -> "A password deve conter pelo menos uma letra maiúscula"
+        !password.any { it.isLowerCase() } -> "A password deve conter pelo menos uma letra minúscula"
+        !password.any { it.isDigit() }     -> "A password deve conter pelo menos um número"
+        else                               -> null
+    }
+
+    private fun parseFirebaseError(message: String?): String = when {
+        message == null -> "Erro desconhecido"
         message.contains("INVALID_LOGIN_CREDENTIALS") ||
         message.contains("wrong-password") ||
-        message.contains("user-not-found")         -> "Email ou password incorretos"
-        message.contains("email-already-in-use")   -> "Este email já está registado"
-        message.contains("invalid-email")           -> "Email inválido"
-        message.contains("network")                 -> "Sem ligação à Internet. Verifica a internet do emulador ou usa 'Continuar como Convidado'"
-        message.contains("too-many-requests")       -> "Demasiadas tentativas. Tenta mais tarde"
-        else                                        -> message // mostra o erro real para debug
+        message.contains("user-not-found")       -> "Email ou password incorretos"
+        message.contains("email-already-in-use") -> "Este email já está registado"
+        message.contains("invalid-email")        -> "Email inválido"
+        message.contains("network")              -> "Sem ligação à Internet. Verifica a internet do emulador ou usa 'Continuar como Convidado'"
+        message.contains("too-many-requests")    -> "Demasiadas tentativas. Tenta mais tarde"
+        else -> message
     }
 }

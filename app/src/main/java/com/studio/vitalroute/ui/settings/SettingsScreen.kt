@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
@@ -64,7 +66,8 @@ fun SettingsScreen(
                 sub   = uiState.displayName.ifBlank { "— não definido —" },
                 onClick = { viewModel.startEditName() }
             )
-            SettingsItem(Icons.Default.Email, "Email", uiState.email.ifBlank { "—" })
+            SettingsItem(Icons.Default.Email, "Email", uiState.email.ifBlank { "—" },
+                onClick = { viewModel.startChangeEmail() })
 
             // Peso
             SettingsItem(
@@ -134,7 +137,8 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(4.dp))
 
-            SettingsItem(Icons.Default.Lock, "Segurança", "Alterar palavra-passe")
+            SettingsItem(Icons.Default.Lock, "Segurança", "Alterar palavra-passe",
+                onClick = { viewModel.startChangePassword() })
 
             Spacer(modifier = Modifier.height(24.dp))
             SectionHeader("APP E UNIDADES")
@@ -219,6 +223,145 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
             Text("Versão 1.0.4 - VitalRoute", color = Color.DarkGray, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 10.sp)
             Spacer(modifier = Modifier.height(40.dp))
+        }
+    }
+
+    // diálogo alterar password
+    if (uiState.isChangingPassword) {
+        var showCurrent  by remember { mutableStateOf(false) }
+        var showNew      by remember { mutableStateOf(false) }
+        var showConfirm  by remember { mutableStateOf(false) }
+        Dialog(onDismissRequest = { viewModel.cancelChangePassword() }) {
+            Card(colors = CardDefaults.cardColors(CardGray), shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("Alterar Password", color = Color.White,
+                        fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                    Spacer(Modifier.height(16.dp))
+
+                    if (uiState.passwordChangeSuccess) {
+                        Surface(color = Color(0xFF002A00), shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(12.dp, 10.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Default.CheckCircle, null, tint = VitalGreen, modifier = Modifier.size(16.dp))
+                                Text("Password alterada com sucesso!", color = VitalGreen, fontSize = 13.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Button(onClick = { viewModel.cancelChangePassword() },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = VitalGreen)) {
+                            Text("Fechar", color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        PasswordField("Password atual", uiState.currentPasswordInput, showCurrent,
+                            { viewModel.updateCurrentPasswordInput(it) }, { showCurrent = !showCurrent })
+                        Spacer(Modifier.height(10.dp))
+                        PasswordField("Nova password", uiState.newPasswordInput, showNew,
+                            { viewModel.updateNewPasswordInput(it) }, { showNew = !showNew })
+                        Spacer(Modifier.height(4.dp))
+                        Text("Mínimo 8 caracteres, com maiúscula, minúscula e número",
+                            color = Color(0xFF666666), fontSize = 11.sp)
+                        Spacer(Modifier.height(10.dp))
+                        PasswordField("Confirmar nova password", uiState.confirmPasswordInput, showConfirm,
+                            { viewModel.updateConfirmPasswordInput(it) }, { showConfirm = !showConfirm })
+
+                        uiState.passwordChangeError?.let {
+                            Spacer(Modifier.height(8.dp))
+                            Text(it, color = VitalRed, fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.height(20.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(onClick = { viewModel.cancelChangePassword() },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Gray),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.DarkGray)
+                            ) { Text("Cancelar") }
+                            Button(onClick = { viewModel.savePassword() },
+                                enabled = !uiState.passwordChangeLoading,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = VitalGreen)) {
+                                if (uiState.passwordChangeLoading)
+                                    CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                else Text("Guardar", color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // diálogo alterar email
+    if (uiState.isChangingEmail) {
+        var showPassword by remember { mutableStateOf(false) }
+        Dialog(onDismissRequest = { viewModel.cancelChangeEmail() }) {
+            Card(colors = CardDefaults.cardColors(CardGray), shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("Alterar Email", color = Color.White,
+                        fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                    Spacer(Modifier.height(16.dp))
+
+                    if (uiState.emailChangeSuccess) {
+                        Surface(color = Color(0xFF002A00), shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp, 10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(Icons.Default.CheckCircle, null, tint = VitalGreen, modifier = Modifier.size(16.dp))
+                                    Text("Link de confirmação enviado!", color = VitalGreen, fontSize = 13.sp)
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text("Clica no link enviado para ${uiState.newEmailInput.trim()} para confirmar a alteração.",
+                                    color = Color(0xFF88CC88), fontSize = 12.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Button(onClick = { viewModel.cancelChangeEmail() },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = VitalGreen)) {
+                            Text("Fechar", color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = uiState.newEmailInput,
+                            onValueChange = { viewModel.updateNewEmailInput(it) },
+                            label = { Text("Novo email") },
+                            leadingIcon = { Icon(Icons.Default.Email, null, tint = Color.Gray) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = settingsFieldColors()
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        PasswordField("Password atual", uiState.emailChangePasswordInput, showPassword,
+                            { viewModel.updateEmailChangePasswordInput(it) }, { showPassword = !showPassword })
+
+                        uiState.emailChangeError?.let {
+                            Spacer(Modifier.height(8.dp))
+                            Text(it, color = VitalRed, fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.height(20.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(onClick = { viewModel.cancelChangeEmail() },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Gray),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.DarkGray)
+                            ) { Text("Cancelar") }
+                            Button(onClick = { viewModel.saveEmail() },
+                                enabled = !uiState.emailChangeLoading,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = VitalGreen)) {
+                                if (uiState.emailChangeLoading)
+                                    CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                else Text("Guardar", color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -355,3 +498,45 @@ fun SettingsToggle(icon: ImageVector, title: String, checked: Boolean, onChecked
         Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedTrackColor = VitalGreen))
     }
 }
+
+@Composable
+private fun PasswordField(
+    label: String,
+    value: String,
+    visible: Boolean,
+    onValueChange: (String) -> Unit,
+    onToggleVisibility: () -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        leadingIcon = { Icon(Icons.Default.Lock, null, tint = Color.Gray) },
+        trailingIcon = {
+            IconButton(onClick = onToggleVisibility) {
+                Icon(
+                    imageVector = if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = null, tint = Color.Gray
+                )
+            }
+        },
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+        modifier = Modifier.fillMaxWidth(),
+        colors = settingsFieldColors()
+    )
+}
+
+@Composable
+private fun settingsFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor   = VitalGreen,
+    unfocusedBorderColor = Color.DarkGray,
+    focusedLabelColor    = VitalGreen,
+    unfocusedLabelColor  = Color.Gray,
+    focusedTextColor     = Color.White,
+    unfocusedTextColor   = Color.White,
+    cursorColor          = VitalGreen,
+    focusedContainerColor   = Color(0xFF111111),
+    unfocusedContainerColor = Color(0xFF111111)
+)
