@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -147,6 +148,19 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                     }
                 }
 
+                // marcador de destino
+                map.overlays.removeAll { it is DestinationMarker }
+                uiState.activeDestination?.let { dest ->
+                    val icon = createDestinationMarkerIcon(context)
+                    val marker = DestinationMarker(map).apply {
+                        position = GeoPoint(dest.lat, dest.lng)
+                        title    = if (dest.name.isNotBlank()) dest.name else "Destino"
+                        this.icon = icon
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    }
+                    map.overlays.add(marker)
+                }
+
                 // zonas seguras — círculos e marcadores (sempre visíveis)
                 map.overlays.removeAll { it is ZoneCircle || it is ZoneMarker }
                 uiState.safeZones.forEach { zone ->
@@ -215,6 +229,38 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                     )
                 }
             }
+            // Banner "destino ativo"
+            if (uiState.activeDestination != null && !uiState.isAddingZone) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    modifier        = Modifier.fillMaxWidth(),
+                    color           = Color(0xF0204080),
+                    shape           = RoundedCornerShape(14.dp),
+                    shadowElevation = 8.dp
+                ) {
+                    Row(
+                        modifier              = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val dest = uiState.activeDestination
+                        Icon(Icons.Default.LocationOn, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = if (dest != null && dest.name.isNotBlank())
+                                       "Destino: ${dest.name}"
+                                   else "Destino definido",
+                            color      = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize   = 13.sp,
+                            modifier   = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = viewModel::clearDestination, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+
             // Banner "adicionar zona" — logo abaixo da barra de topo, sem sobreposição
             if (uiState.isAddingZone) {
                 Spacer(Modifier.height(8.dp))
@@ -299,25 +345,39 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             }
         }
 
+        // ── Bottom sheet de destino (slide-up) ──────────────────────────────
+        AnimatedVisibility(
+            visible  = uiState.showDestinationSheet,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter    = slideInVertically(initialOffsetY = { it }),
+            exit     = slideOutVertically(targetOffsetY = { it })
+        ) {
+            DestinationSheet(
+                onConfirm = viewModel::setAsDestination,
+                onDismiss = viewModel::dismissDestinationSheet
+            )
+        }
+
         // ── Painel de edição de zona (slide-up) ─────────────────────────────
         AnimatedVisibility(
-            visible  = uiState.selectedZone != null,
+            visible  = uiState.selectedZone != null && !uiState.showDestinationSheet,
             modifier = Modifier.align(Alignment.BottomCenter),
             enter    = slideInVertically(initialOffsetY = { it }),
             exit     = slideOutVertically(targetOffsetY = { it })
         ) {
             uiState.selectedZone?.let { zone ->
                 ZoneDetailSheet(
-                    zone              = zone,
-                    editingRadius     = uiState.editingRadius,
-                    editingColor      = uiState.editingColor,
-                    showDeleteConfirm = uiState.showDeleteConfirm,
-                    onRadiusChange    = viewModel::updateEditingRadius,
-                    onColorChange     = viewModel::updateEditingColor,
-                    onSave            = viewModel::saveZoneEdits,
-                    onDeleteRequest   = viewModel::toggleDeleteConfirm,
-                    onDeleteConfirm   = viewModel::deleteSelectedZone,
-                    onDismiss         = viewModel::deselectZone
+                    zone                = zone,
+                    editingRadius       = uiState.editingRadius,
+                    editingColor        = uiState.editingColor,
+                    showDeleteConfirm   = uiState.showDeleteConfirm,
+                    onRadiusChange      = viewModel::updateEditingRadius,
+                    onColorChange       = viewModel::updateEditingColor,
+                    onSave              = viewModel::saveZoneEdits,
+                    onDeleteRequest     = viewModel::toggleDeleteConfirm,
+                    onDeleteConfirm     = viewModel::deleteSelectedZone,
+                    onDismiss           = viewModel::deselectZone,
+                    onSetAsDestination  = { viewModel.setZoneAsDestination(zone) }
                 )
             }
         }
@@ -569,7 +629,8 @@ private fun ZoneDetailSheet(
     onSave: () -> Unit,
     onDeleteRequest: () -> Unit,
     onDeleteConfirm: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onSetAsDestination: () -> Unit = {}
 ) {
     Surface(
         modifier        = Modifier
@@ -664,7 +725,19 @@ private fun ZoneDetailSheet(
                 Text("500 m", color = Color.DarkGray, fontSize = 10.sp)
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(8.dp))
+
+            // Botão "Definir como destino"
+            TextButton(
+                onClick  = onSetAsDestination,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.LocationOn, null, tint = Color(0xFF64B5F6), modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Definir como destino", color = Color(0xFF64B5F6), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+
+            Spacer(Modifier.height(8.dp))
 
             // Confirmação de eliminação ou botões normais
             if (showDeleteConfirm) {
@@ -810,10 +883,101 @@ private fun ZoneNameDialog(
     }
 }
 
-// ── Classes de overlay para zonas (para identificar e remover seletivamente) ───
+// ── Classes de overlay para zonas e destino (para identificar e remover seletivamente) ───
 
 private class ZoneCircle : Polygon()
 private class ZoneMarker(map: MapView) : Marker(map)
+private class DestinationMarker(map: MapView) : Marker(map)
+
+// ── Bottom sheet de confirmação de destino ──────────────────────────────────────
+
+@Composable
+private fun DestinationSheet(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Surface(
+        modifier        = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding(),
+        color           = Color(0xFF1A1A1A),
+        shape           = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        shadowElevation = 16.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.LocationOn, null, tint = Color(0xFF64B5F6), modifier = Modifier.size(20.dp))
+                    Text("Ponto selecionado", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Close, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick  = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    border   = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF444444)),
+                    colors   = ButtonDefaults.outlinedButtonColors(contentColor = Color.Gray)
+                ) {
+                    Text("Cancelar", fontSize = 13.sp)
+                }
+                Button(
+                    onClick  = onConfirm,
+                    modifier = Modifier.weight(1f),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF204080), contentColor = Color.White)
+                ) {
+                    Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Escolher como destino", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+    }
+}
+
+private fun createDestinationMarkerIcon(context: Context): BitmapDrawable {
+    val size = 80
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.parseColor("#1565C0")
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(size / 2f, size / 2f, size / 2f, bgPaint)
+
+    val fgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+        strokeWidth = size * 0.08f
+        strokeCap = android.graphics.Paint.Cap.ROUND
+    }
+    // Cruz de alvo (crosshair)
+    canvas.drawRect(size * 0.46f, size * 0.18f, size * 0.54f, size * 0.82f, fgPaint)
+    canvas.drawRect(size * 0.18f, size * 0.46f, size * 0.82f, size * 0.54f, fgPaint)
+    // Círculo central
+    val holePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.parseColor("#1565C0")
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(size / 2f, size / 2f, size * 0.12f, holePaint)
+
+    return BitmapDrawable(context.resources, bitmap)
+}
 
 private fun createHouseMarkerIcon(context: Context, colorHex: String = "#FF6F00"): BitmapDrawable {
     val size = 80

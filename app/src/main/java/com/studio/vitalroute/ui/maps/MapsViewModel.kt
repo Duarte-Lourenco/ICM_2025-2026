@@ -2,6 +2,8 @@ package com.studio.vitalroute.ui.maps
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.studio.vitalroute.data.Destination
+import com.studio.vitalroute.data.DestinationManager
 import com.studio.vitalroute.data.api.OverpassRetrofit
 import com.studio.vitalroute.data.api.WeatherRepository
 import com.studio.vitalroute.data.firebase.FirestoreRepository
@@ -58,7 +60,11 @@ data class MapsUiState(
     val selectedLayer: MapLayer = MapLayer.STANDARD,
     val searchRadiusM: Int = 5000,
     val centerLat: Double = 40.6405,
-    val centerLon: Double = -8.6568
+    val centerLon: Double = -8.6568,
+    val showDestinationSheet: Boolean = false,
+    val pendingDestLat: Double = 0.0,
+    val pendingDestLng: Double = 0.0,
+    val activeDestination: Destination? = null
 )
 
 
@@ -74,6 +80,11 @@ class MapsViewModel : ViewModel() {
     init {
         fetchWeather()
         loadSafeZones()
+        viewModelScope.launch {
+            DestinationManager.destination.collect { dest ->
+                _uiState.update { it.copy(activeDestination = dest) }
+            }
+        }
     }
 
     fun fetchWeather(
@@ -194,8 +205,33 @@ class MapsViewModel : ViewModel() {
     }
 
     fun onMapTapped(lat: Double, lon: Double) {
-        if (!_uiState.value.isAddingZone) return
-        _uiState.update { it.copy(pendingZoneLat = lat, pendingZoneLng = lon, showZoneNameDialog = true, pendingZoneName = "") }
+        when {
+            _uiState.value.isAddingZone -> _uiState.update {
+                it.copy(pendingZoneLat = lat, pendingZoneLng = lon, showZoneNameDialog = true, pendingZoneName = "")
+            }
+            _uiState.value.selectedZone == null -> _uiState.update {
+                it.copy(showDestinationSheet = true, pendingDestLat = lat, pendingDestLng = lon)
+            }
+        }
+    }
+
+    fun setAsDestination() {
+        val s = _uiState.value
+        DestinationManager.set(s.pendingDestLat, s.pendingDestLng)
+        _uiState.update { it.copy(showDestinationSheet = false) }
+    }
+
+    fun dismissDestinationSheet() {
+        _uiState.update { it.copy(showDestinationSheet = false) }
+    }
+
+    fun setZoneAsDestination(zone: FirestoreSafeZone) {
+        DestinationManager.set(zone.lat, zone.lng, zone.name)
+        _uiState.update { it.copy(selectedZone = null, showDeleteConfirm = false) }
+    }
+
+    fun clearDestination() {
+        DestinationManager.clear()
     }
 
     fun updatePendingZoneName(name: String) { _uiState.update { it.copy(pendingZoneName = name) } }

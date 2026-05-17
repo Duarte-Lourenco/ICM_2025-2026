@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.studio.vitalroute.data.DestinationManager
+import com.studio.vitalroute.data.SosManager
 import com.studio.vitalroute.data.firebase.FirestoreRepository
 import com.studio.vitalroute.data.model.Activity
 import kotlinx.coroutines.Dispatchers
@@ -14,9 +16,15 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import com.studio.vitalroute.data.SosManager
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.URL
+import java.util.Locale
+
 
 
 enum class ActivityType(val key: String, val label: String, val emoji: String) {
@@ -49,7 +57,13 @@ data class RecordingUiState(
     // Mapa em tempo real
     val currentLat: Double = 0.0,
     val currentLng: Double = 0.0,
-    val routePoints: List<String> = emptyList()
+    val routePoints: List<String> = emptyList(),
+    // Destino e rota planeada
+    val hasDestination: Boolean = false,
+    val destinationLat: Double = 0.0,
+    val destinationLng: Double = 0.0,
+    val destinationName: String = "",
+    val plannedRoutePoints: List<String> = emptyList()
 )
 
 
@@ -61,8 +75,9 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private val _uiState = MutableStateFlow(RecordingUiState())
     val uiState: StateFlow<RecordingUiState> = _uiState.asStateFlow()
 
-    private var manualSosJob: Job? = null
-    private var autoStopHandled  = false
+    private var manualSosJob: Job?  = null
+    private var routeFetchJob: Job? = null
+    private var autoStopHandled     = false
 
     // Definições carregadas do Firestore para passar ao serviço
     private var fallSensitivity        = 0.6f
@@ -109,6 +124,20 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
         }
+        // Observa o destino selecionado no ecrã do mapa
+        viewModelScope.launch {
+            DestinationManager.destination.collect { dest ->
+                _uiState.update {
+                    it.copy(
+                        hasDestination  = dest != null,
+                        destinationLat  = dest?.lat ?: 0.0,
+                        destinationLng  = dest?.lng ?: 0.0,
+                        destinationName = dest?.name ?: ""
+                    )
+                }
+            }
+        }
+
         // Carrega as definições de segurança para usar ao iniciar a gravação
         loadSecuritySettings()
     }
@@ -189,6 +218,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun startRecording() {
         autoStopHandled = false
+        _uiState.update { it.copy(plannedRoutePoints = emptyList()) }
         val state = _uiState.value
         val type  = state.activityType
         val intent = Intent(ctx, RecordingService::class.java).apply {
@@ -204,11 +234,61 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
             putExtra(RecordingService.EXTRA_WEIGHT_KG,               userWeightKg)
         }
         ctx.startForegroundService(intent)
+
+        // Se houver destino, aguarda o primeiro fix GPS e obtém a rota
+        val dest = DestinationManager.destination.value
+        if (dest != null) {
+            routeFetchJob?.cancel()
+            routeFetchJob = viewModelScope.launch {
+                RecordingService.state
+                    .filter { it.isRecording && (it.currentLat != 0.0 || it.currentLng != 0.0) }
+                    .take(1)
+                    .collect { s -> fetchPlannedRoute(s.currentLat, s.currentLng, dest.lat, dest.lng, type) }
+            }
+        }
     }
 
     // parar gravação
 
+    private fun fetchPlannedRoute(
+        startLat: Double, startLng: Double,
+        destLat: Double,  destLng: Double,
+        type: ActivityType
+    ) {
+        viewModelScope.launch {
+            try {
+                val profile = when (type) {
+                    ActivityType.CYCLING -> "bike"
+                    ActivityType.RUNNING, ActivityType.WALKING -> "foot"
+                }
+                val url = "https://router.project-osrm.org/route/v1/$profile/" +
+                    "%.6f,%.6f;%.6f,%.6f?geometries=geojson&overview=full"
+                    .format(Locale.US, startLng, startLat, destLng, destLat)
+
+                val body = withContext(Dispatchers.IO) {
+                    runCatching { URL(url).readText() }.getOrNull()
+                } ?: return@launch
+
+                val routes = JSONObject(body).optJSONArray("routes") ?: return@launch
+                if (routes.length() == 0) return@launch
+                val coords = routes.getJSONObject(0)
+                    .getJSONObject("geometry")
+                    .getJSONArray("coordinates")
+
+                val points = (0 until coords.length()).map { i ->
+                    val pair = coords.getJSONArray(i)
+                    "%.6f,%.6f".format(Locale.US, pair.getDouble(1), pair.getDouble(0))
+                }
+                _uiState.update { it.copy(plannedRoutePoints = points) }
+            } catch (_: Exception) {
+                // sem internet ou OSRM indisponível — sem rota planeada
+            }
+        }
+    }
+
     fun stopRecording() {
+        routeFetchJob?.cancel()
+        _uiState.update { it.copy(plannedRoutePoints = emptyList()) }
         val s = RecordingService.state.value
 
         if (s.elapsedSeconds >= 10) {

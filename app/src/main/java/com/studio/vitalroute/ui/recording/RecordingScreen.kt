@@ -14,6 +14,7 @@ import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
@@ -304,12 +305,16 @@ fun RecordingScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // mapa em tempo real (visível durante gravação)
-            if (uiState.isRecording) {
+            // mapa em tempo real (visível durante gravação ou quando há destino)
+            if (uiState.isRecording || uiState.hasDestination) {
                 LiveTrackingMap(
-                    currentLat  = uiState.currentLat,
-                    currentLng  = uiState.currentLng,
-                    routePoints = uiState.routePoints
+                    currentLat          = uiState.currentLat,
+                    currentLng          = uiState.currentLng,
+                    routePoints         = uiState.routePoints,
+                    destinationLat      = uiState.destinationLat,
+                    destinationLng      = uiState.destinationLng,
+                    plannedRoutePoints  = uiState.plannedRoutePoints,
+                    isRecording         = uiState.isRecording
                 )
                 Spacer(Modifier.height(16.dp))
             } else {
@@ -637,8 +642,14 @@ fun SosCountdownOverlay(
 private fun LiveTrackingMap(
     currentLat: Double,
     currentLng: Double,
-    routePoints: List<String>
+    routePoints: List<String>,
+    destinationLat: Double = 0.0,
+    destinationLng: Double = 0.0,
+    plannedRoutePoints: List<String> = emptyList(),
+    isRecording: Boolean = false
 ) {
+    val hasDestination = destinationLat != 0.0 || destinationLng != 0.0
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors   = CardDefaults.cardColors(containerColor = Color(0xFF141414)),
@@ -647,72 +658,125 @@ private fun LiveTrackingMap(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(220.dp)
         ) {
             AndroidView(
                 factory = { ctx ->
                     Configuration.getInstance().apply {
-                        userAgentValue     = ctx.packageName
-                        osmdroidBasePath   = File(ctx.cacheDir, "osmdroid")
-                        osmdroidTileCache  = File(ctx.cacheDir, "osmdroid/tiles")
+                        userAgentValue    = ctx.packageName
+                        osmdroidBasePath  = File(ctx.cacheDir, "osmdroid")
+                        osmdroidTileCache = File(ctx.cacheDir, "osmdroid/tiles")
                     }
                     MapView(ctx).apply {
                         setTileSource(liveMapTileSource())
                         setMultiTouchControls(true)
-                        controller.setZoom(17.0)
+                        controller.setZoom(if (isRecording) 17.0 else 15.0)
                         val locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
                         locationOverlay.enableMyLocation()
-                        locationOverlay.enableFollowLocation()
+                        if (isRecording) locationOverlay.enableFollowLocation()
                         overlays.add(locationOverlay)
                     }
                 },
                 update = { map ->
-                    map.overlays.removeAll { it is Polyline }
+                    // Rota planeada (azul) — inserida no início para ficar por baixo
+                    map.overlays.removeAll { it is LivePlannedPolyline }
+                    if (plannedRoutePoints.size >= 2) {
+                        val pts = plannedRoutePoints.mapNotNull { p ->
+                            val s = p.split(",")
+                            if (s.size == 2) GeoPoint(s[0].toDoubleOrNull() ?: return@mapNotNull null,
+                                                       s[1].toDoubleOrNull() ?: return@mapNotNull null)
+                            else null
+                        }
+                        if (pts.size >= 2) {
+                            val poly = LivePlannedPolyline(map)
+                            poly.setPoints(pts)
+                            poly.outlinePaint.color       = android.graphics.Color.parseColor("#1565C0")
+                            poly.outlinePaint.strokeWidth = 10f
+                            poly.outlinePaint.alpha       = 160
+                            poly.outlinePaint.strokeCap   = android.graphics.Paint.Cap.ROUND
+                            poly.outlinePaint.strokeJoin  = android.graphics.Paint.Join.ROUND
+                            map.overlays.add(1, poly)
+                        }
+                    }
+
+                    // Rota percorrida (verde)
+                    map.overlays.removeAll { it is Polyline && it !is LivePlannedPolyline }
                     val coords = routePoints.mapNotNull { p ->
-                        val parts = p.split(",")
-                        if (parts.size == 2) {
-                            val lat = parts[0].toDoubleOrNull()
-                            val lng = parts[1].toDoubleOrNull()
-                            if (lat != null && lng != null) GeoPoint(lat, lng) else null
-                        } else null
+                        val s = p.split(",")
+                        if (s.size == 2) GeoPoint(s[0].toDoubleOrNull() ?: return@mapNotNull null,
+                                                   s[1].toDoubleOrNull() ?: return@mapNotNull null)
+                        else null
                     }
                     if (coords.size >= 2) {
-                        val polyline = Polyline(map).apply {
-                            setPoints(coords)
-                            outlinePaint.color       = android.graphics.Color.parseColor("#4CAF50")
-                            outlinePaint.strokeWidth = 12f
-                            outlinePaint.alpha       = 210
-                            outlinePaint.strokeCap   = android.graphics.Paint.Cap.ROUND
-                            outlinePaint.strokeJoin  = android.graphics.Paint.Join.ROUND
-                        }
-                        map.overlays.add(polyline)
+                        val poly = Polyline(map)
+                        poly.setPoints(coords)
+                        poly.outlinePaint.color       = android.graphics.Color.parseColor("#4CAF50")
+                        poly.outlinePaint.strokeWidth = 12f
+                        poly.outlinePaint.alpha       = 210
+                        poly.outlinePaint.strokeCap   = android.graphics.Paint.Cap.ROUND
+                        poly.outlinePaint.strokeJoin  = android.graphics.Paint.Join.ROUND
+                        map.overlays.add(poly)
                     }
+
+                    // Marcador de destino
+                    map.overlays.removeAll { it is LiveDestMarker }
+                    if (hasDestination) {
+                        val m = LiveDestMarker(map)
+                        m.position = GeoPoint(destinationLat, destinationLng)
+                        m.title    = "Destino"
+                        m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        map.overlays.add(m)
+                    }
+
+                    // Centra no destino se ainda não há fix GPS
+                    if (hasDestination && !isRecording && currentLat == 0.0 && currentLng == 0.0) {
+                        map.controller.setCenter(GeoPoint(destinationLat, destinationLng))
+                    }
+
                     map.invalidate()
                 },
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(RoundedCornerShape(16.dp))
             )
-            // Badge "EM DIRETO"
+
             Surface(
-                modifier  = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp),
-                color     = Color(0xBB111111),
-                shape     = RoundedCornerShape(8.dp)
+                modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                color    = Color(0xBB111111),
+                shape    = RoundedCornerShape(8.dp)
             ) {
                 Text(
-                    text          = "● EM DIRETO",
-                    color         = VitalRed,
+                    text          = if (isRecording) "● EM DIRETO" else "📍 DESTINO",
+                    color         = if (isRecording) VitalRed else Color(0xFF64B5F6),
                     fontSize      = 9.sp,
                     fontWeight    = FontWeight.ExtraBold,
                     letterSpacing = 1.sp,
                     modifier      = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
+
+            if (plannedRoutePoints.size >= 2) {
+                Surface(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+                    color    = Color(0xBB111111),
+                    shape    = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text          = "— Rota planeada",
+                        color         = Color(0xFF64B5F6),
+                        fontSize      = 9.sp,
+                        fontWeight    = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                        modifier      = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
         }
     }
 }
+
+private class LivePlannedPolyline(map: MapView) : Polyline(map)
+private class LiveDestMarker(map: MapView) : Marker(map)
 
 private fun liveMapTileSource(): OnlineTileSourceBase =
     object : OnlineTileSourceBase(
