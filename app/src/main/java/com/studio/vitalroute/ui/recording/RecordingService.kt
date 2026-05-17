@@ -58,6 +58,7 @@ data class RecordingServiceState(
     val isLocationSharing: Boolean = false,
     // Geofencing — chegada a zona segura
     val arrivedAtZone: String?  = null,
+    val autoStopped: Boolean    = false,
     // Coordenadas GPS atuais (para link de partilha)
     val currentLat: Double = 0.0,
     val currentLng: Double = 0.0,
@@ -288,7 +289,7 @@ class RecordingService : Service(), SensorEventListener {
         stopSelf()
         safeZones.clear()
         triggeredZones.clear()
-        _state.update { it.copy(isRecording = false, isLocationSharing = false, arrivedAtZone = null) }
+        _state.update { it.copy(isRecording = false, isLocationSharing = false, arrivedAtZone = null, autoStopped = false) }
     }
 
     // sos: cancelar (botão "estou bem")
@@ -503,7 +504,7 @@ class RecordingService : Service(), SensorEventListener {
     }
 
     private fun onArrivalAtZone(zone: FirestoreSafeZone) {
-        _state.update { it.copy(arrivedAtZone = zone.name) }
+        _state.update { it.copy(arrivedAtZone = zone.name, autoStopped = true) }
 
         // Notificação push de chegada
         val notification = androidx.core.app.NotificationCompat

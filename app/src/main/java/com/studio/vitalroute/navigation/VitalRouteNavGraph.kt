@@ -67,7 +67,13 @@ fun VitalRouteNavGraph(onSignOut: () -> Unit = {}) {
             composable(Screen.Inicio.route) { HomeScreen(navController) }
             composable(Screen.Mapas.route) { MapsScreen() }
             composable(Screen.Iniciar.route) { RecordingScreen() }
-            composable(Screen.Seguranca.route) { SecurityScreen() }
+            composable(Screen.Seguranca.route) {
+                SecurityScreen(
+                    onNavigateToMap = {
+                        navController.navigate(Screen.Mapas.route)
+                    }
+                )
+            }
             composable(Screen.Perfil.route) { DiaryScreen(navController) }
             composable("settings")   { SettingsScreen(navController, onSignOut = onSignOut) }
             composable("bluetooth")  { BluetoothScreen(navController) }

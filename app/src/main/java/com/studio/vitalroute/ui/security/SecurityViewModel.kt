@@ -33,7 +33,9 @@ data class SafeZone(
     val id: String,
     val name: String,
     val address: String,
-    val icon: ImageVector
+    val icon: ImageVector,
+    val color: String  = "#FF6F00",
+    val radiusM: Int   = 150
 )
 
 // Estado do diálogo de adicionar zona segura
@@ -98,6 +100,7 @@ class SecurityViewModel : ViewModel() {
             repository.getSafeZones()
                 .catch { _uiState.update { it.copy(isLoadingZones = false) } }
                 .collect { list ->
+                    rawZones = list
                     _uiState.update {
                         it.copy(
                             isLoadingZones = false,
@@ -108,6 +111,17 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
+    fun saveZoneEdits(zoneId: String, color: String, radiusM: Int) {
+        val raw = rawZones.find { it.id == zoneId } ?: return
+        viewModelScope.launch {
+            try { repository.saveSafeZone(raw.copy(color = color, radiusM = radiusM)) }
+            catch (_: Exception) {}
+        }
+    }
+
+    // Lista raw guardada para poder editar sem perder lat/lng
+    private var rawZones: List<FirestoreSafeZone> = emptyList()
+
     private fun FirestoreSafeZone.toUi(): SafeZone {
         val icon = when {
             name.contains("casa",      ignoreCase = true) ||
@@ -116,7 +130,7 @@ class SecurityViewModel : ViewModel() {
             name.contains("work",      ignoreCase = true) -> Icons.Default.Work
             else                                          -> Icons.Default.LocationOn
         }
-        return SafeZone(id = id, name = name, address = address, icon = icon)
+        return SafeZone(id = id, name = name, address = address, icon = icon, color = color, radiusM = radiusM)
     }
 
     // diálogo adicionar zona

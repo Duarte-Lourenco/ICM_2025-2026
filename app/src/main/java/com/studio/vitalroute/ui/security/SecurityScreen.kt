@@ -34,10 +34,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.studio.vitalroute.ui.components.SectionHeader
 import com.studio.vitalroute.ui.theme.*
 
-private val RELATIONS = listOf("Família", "Cônjuge", "Pai/Mãe", "Filho/a", "Amigo/a", "Colega", "Médico", "Outro")
+private val RELATIONS   = listOf("Família", "Cônjuge", "Pai/Mãe", "Filho/a", "Amigo/a", "Colega", "Médico", "Outro")
+private val ZONE_COLORS = listOf("#FF6F00", "#4CAF50", "#2196F3", "#F44336", "#9C27B0", "#00BCD4")
 
 @Composable
-fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
+fun SecurityScreen(
+    onNavigateToMap: () -> Unit = {},
+    viewModel: SecurityViewModel = viewModel()
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -311,10 +315,17 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             SectionHeader("ZONAS SEGURAS")
-            TextButton(onClick = { viewModel.openAddZoneDialog() }) {
-                Icon(Icons.Default.Add, null, tint = VitalGreen, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Adicionar", color = VitalGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = { viewModel.openAddZoneDialog() }) {
+                    Icon(Icons.Default.Add, null, tint = VitalGreen, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Por endereço", color = VitalGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                TextButton(onClick = onNavigateToMap) {
+                    Icon(Icons.Default.Map, null, tint = VitalOrange, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("No mapa", color = VitalOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
 
@@ -343,8 +354,9 @@ fun SecurityScreen(viewModel: SecurityViewModel = viewModel()) {
         } else {
             uiState.safeZones.forEach { zone ->
                 SafeZoneCard(
-                    zone      = zone,
-                    onDelete  = { viewModel.deleteZone(zone.id) }
+                    zone       = zone,
+                    onDelete   = { viewModel.deleteZone(zone.id) },
+                    onSaveEdits = { color, radiusM -> viewModel.saveZoneEdits(zone.id, color, radiusM) }
                 )
                 Spacer(Modifier.height(8.dp))
             }
@@ -687,52 +699,150 @@ private fun SensitivityBadge(value: Float) {
 }
 
 @Composable
-private fun SafeZoneCard(zone: SafeZone, onDelete: () -> Unit) {
+private fun SafeZoneCard(
+    zone: SafeZone,
+    onDelete: () -> Unit,
+    onSaveEdits: (color: String, radiusM: Int) -> Unit
+) {
+    var expanded         by remember { mutableStateOf(false) }
+    var editColor        by remember(zone.id) { mutableStateOf(zone.color) }
+    var editRadius       by remember(zone.id) { mutableIntStateOf(zone.radiusM) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    val iconColor = try { Color(android.graphics.Color.parseColor(editColor)) }
+                   catch (_: Exception) { VitalOrange }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors   = CardDefaults.cardColors(containerColor = CardGray),
         shape    = RoundedCornerShape(12.dp)
     ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(VitalGreen.copy(alpha = 0.1f), RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
+        Column {
+            // ── Cabeçalho (sempre visível) ──────────────────────────────
+            Row(
+                modifier          = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(zone.icon, null, tint = VitalGreen, modifier = Modifier.size(22.dp))
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(iconColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🏠", fontSize = 20.sp)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(zone.name, color = Color.White, fontWeight = FontWeight.Bold)
+                    if (zone.address.isNotBlank())
+                        Text(zone.address, color = Color.Gray, fontSize = 12.sp)
+                    Text("${zone.radiusM} m", color = Color.DarkGray, fontSize = 11.sp)
+                }
+                Icon(
+                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    null, tint = Color.Gray, modifier = Modifier.size(20.dp)
+                )
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(zone.name, color = Color.White, fontWeight = FontWeight.Bold)
-                if (zone.address.isNotBlank())
-                    Text(zone.address, color = Color.Gray, fontSize = 12.sp)
-            }
-            IconButton(onClick = { showDeleteConfirm = true }) {
-                Icon(Icons.Default.Delete, null, tint = Color.DarkGray, modifier = Modifier.size(20.dp))
+
+            // ── Painel de edição (expandido) ────────────────────────────
+            if (expanded) {
+                HorizontalDivider(color = Color(0xFF2A2A2A))
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+
+                    // Cor do ícone
+                    Text("Cor do ícone", color = Color.Gray, fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ZONE_COLORS.forEach { hex ->
+                            val selected = editColor == hex
+                            var mod = Modifier
+                                .size(if (selected) 34.dp else 28.dp)
+                                .clip(CircleShape)
+                                .background(Color(android.graphics.Color.parseColor(hex)))
+                                .clickable { editColor = hex }
+                            if (selected) mod = mod.border(2.dp, Color.White, CircleShape)
+                            Box(modifier = mod)
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Raio de deteção
+                    Row(
+                        modifier              = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment     = Alignment.CenterVertically
+                    ) {
+                        Text("Raio de deteção", color = Color.Gray, fontSize = 12.sp)
+                        Text("$editRadius m", color = VitalOrange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                    Slider(
+                        value         = editRadius.toFloat(),
+                        onValueChange = { editRadius = it.toInt() },
+                        valueRange    = 25f..500f,
+                        colors        = SliderDefaults.colors(
+                            thumbColor         = VitalOrange,
+                            activeTrackColor   = VitalOrange,
+                            inactiveTrackColor = Color(0xFF333333)
+                        )
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("25 m",  color = Color.DarkGray, fontSize = 10.sp)
+                        Text("500 m", color = Color.DarkGray, fontSize = 10.sp)
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Confirmar eliminação ou botões normais
+                    if (showDeleteConfirm) {
+                        Surface(color = Color(0xFF2A0000), shape = RoundedCornerShape(10.dp)) {
+                            Row(
+                                modifier              = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment     = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Apagar esta zona?", color = Color(0xFFFF6B6B), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    TextButton(onClick = { showDeleteConfirm = false }) {
+                                        Text("Cancelar", color = Color.Gray, fontSize = 12.sp)
+                                    }
+                                    Button(
+                                        onClick = { onDelete(); showDeleteConfirm = false },
+                                        colors  = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F), contentColor = Color.White)
+                                    ) { Text("Apagar", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                }
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier              = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick  = { showDeleteConfirm = true },
+                                modifier = Modifier.weight(1f),
+                                border   = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF992222)),
+                                colors   = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF6B6B))
+                            ) {
+                                Icon(Icons.Default.Delete, null, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Apagar", fontSize = 12.sp)
+                            }
+                            Button(
+                                onClick  = { onSaveEdits(editColor, editRadius); expanded = false },
+                                modifier = Modifier.weight(1f),
+                                colors   = ButtonDefaults.buttonColors(containerColor = VitalOrange, contentColor = Color.Black)
+                            ) {
+                                Text("Guardar", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
             }
         }
-    }
-
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            containerColor   = CardGray,
-            title  = { Text("Remover zona?", color = Color.White) },
-            text   = { Text("\"${zone.name}\" será removida das tuas zonas seguras.", color = Color.Gray) },
-            confirmButton = {
-                TextButton(onClick = { onDelete(); showDeleteConfirm = false }) {
-                    Text("Remover", color = VitalRed, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancelar", color = Color.Gray)
-                }
-            }
-        )
     }
 }
 

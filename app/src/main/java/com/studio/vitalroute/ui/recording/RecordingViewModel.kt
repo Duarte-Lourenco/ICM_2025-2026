@@ -58,6 +58,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     val uiState: StateFlow<RecordingUiState> = _uiState.asStateFlow()
 
     private var manualSosJob: Job? = null
+    private var autoStopHandled  = false
 
     // Definições carregadas do Firestore para passar ao serviço
     private var fallSensitivity        = 0.6f
@@ -73,6 +74,11 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         // Observa o estado do serviço em tempo real
         viewModelScope.launch {
             RecordingService.state.collect { s ->
+                // Chegada automática a zona segura → parar gravação
+                if (s.autoStopped && s.isRecording && !autoStopHandled) {
+                    autoStopHandled = true
+                    stopRecording()
+                }
                 val metric = useMetric
                 _uiState.update {
                     it.copy(
@@ -175,6 +181,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     // iniciar gravação
 
     fun startRecording() {
+        autoStopHandled = false
         val state = _uiState.value
         val type  = state.activityType
         val intent = Intent(ctx, RecordingService::class.java).apply {

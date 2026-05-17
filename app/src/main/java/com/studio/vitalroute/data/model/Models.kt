@@ -69,9 +69,10 @@ data class UserProfile(
  */
 data class FirestoreSafeZone(
     val id: String      = "",
-    val name: String    = "",    // ex: "Casa", "Trabalho"
-    val address: String = "",    // descrição legível
+    val name: String    = "",
+    val address: String = "",
     val lat: Double     = 0.0,
     val lng: Double     = 0.0,
-    val radiusM: Int    = 200    // raio de chegada em metros
+    val radiusM: Int    = 150,
+    val color: String   = "#FF6F00"
 )

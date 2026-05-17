@@ -3,40 +3,70 @@ package com.studio.vitalroute.ui.maps
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.drawable.BitmapDrawable
 import android.location.LocationManager
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddLocation
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.SignalCellularAlt
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.studio.vitalroute.ui.theme.*
 import org.osmdroid.config.Configuration
+import android.view.MotionEvent
+import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.io.File
+import kotlin.math.cos
+import kotlin.math.sin
+
+// Cores por tipo de infraestrutura ciclável
+private val COLOR_CYCLEWAY = android.graphics.Color.parseColor("#00C853") // verde vivo
+private val COLOR_PATH     = android.graphics.Color.parseColor("#29B6F6") // azul claro
+private val COLOR_TRACK    = android.graphics.Color.parseColor("#FFA726") // laranja
 
 @Composable
 fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
@@ -47,79 +77,108 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
         getDeviceLocation(context) ?: GeoPoint(40.6405, -8.6568)
     }
 
-    val mapViewRef        = remember { mutableStateOf<MapView?>(null) }
-    val heatmapOverlayRef = remember { mutableStateOf<CoverageHeatmapOverlay?>(null) }
+    val mapViewRef      = remember { mutableStateOf<MapView?>(null) }
+    val markerIconCache = remember { mutableMapOf<String, BitmapDrawable>() }
 
+    // Carrega tudo ao abrir o ecrã
     LaunchedEffect(Unit) {
         viewModel.updateCenter(userLocation.latitude, userLocation.longitude)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // mapa osmdroid
+        // ── Mapa osmdroid ──────────────────────────────────────────────────
         AndroidView(
             factory = { ctx ->
-                // cache offline de tiles
                 Configuration.getInstance().apply {
-                    userAgentValue = ctx.packageName
-                    // Diretório de cache na pasta de cache interna da app
-                    osmdroidBasePath = File(ctx.cacheDir, "osmdroid")
-                    osmdroidTileCache = File(ctx.cacheDir, "osmdroid/tiles")
-                    // Máximo de 200 MB em disco para tiles em cache
-                    tileFileSystemCacheMaxBytes = 200L * 1024L * 1024L
-                    // Expirar tiles após 7 dias (em ms)
-                    expirationOverrideDuration = 7L * 24L * 60L * 60L * 1_000L
-                    // Threads de download paralelo
-                    tileDownloadThreads = 4
-                    tileDownloadMaxQueueSize = 40
+                    userAgentValue          = ctx.packageName
+                    osmdroidBasePath        = File(ctx.cacheDir, "osmdroid")
+                    osmdroidTileCache       = File(ctx.cacheDir, "osmdroid/tiles")
+                    tileFileSystemCacheMaxBytes  = 250L * 1024L * 1024L
+                    expirationOverrideDuration   = 7L * 24L * 60L * 60L * 1_000L
+                    tileDownloadThreads          = 4
+                    tileDownloadMaxQueueSize     = 40
                 }
                 MapView(ctx).apply {
-                    setTileSource(cyclOSMTileSource())
+                    setTileSource(cartoDarkTileSource())
                     setMultiTouchControls(true)
                     controller.setZoom(15.0)
                     controller.setCenter(userLocation)
 
-                    val myLocationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
-                    myLocationOverlay.enableMyLocation()
-                    overlays.add(myLocationOverlay)
+                    val locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
+                    locationOverlay.enableMyLocation()
+                    overlays.add(locationOverlay)
 
-                    // Cria o heatmap overlay uma só vez e mantém referência
-                    val heatmap = CoverageHeatmapOverlay()
-                    heatmapOverlayRef.value = heatmap
+                    // Overlay de eventos de toque (para criar zonas)
+                    overlays.add(object : Overlay() {
+                        override fun onSingleTapConfirmed(e: MotionEvent, mapView: MapView): Boolean {
+                            val pt = mapView.projection.fromPixels(e.x.toInt(), e.y.toInt())
+                            viewModel.onMapTapped(pt.latitude, pt.longitude)
+                            return true
+                        }
+                    })
 
                     mapViewRef.value = this
                 }
             },
             update = { map ->
-                // tile source
-                val newSource = when (uiState.selectedLayer) {
-                    MapLayer.CYCLING  -> cyclOSMTileSource()
-                    MapLayer.STANDARD -> TileSourceFactory.MAPNIK
-                }
-                map.setTileSource(newSource)
+                // tile source — sempre CartoDB Voyager (limpo e minimalista)
+                map.setTileSource(cartoDarkTileSource())
 
-                // ciclovias (polylines)
+                // ciclovias — só visíveis na camada de ciclismo
                 map.overlays.removeAll { it is Polyline }
-                uiState.cyclingPaths.forEach { path ->
-                    Polyline(map).apply {
-                        setPoints(path.points)
-                        outlinePaint.color       = android.graphics.Color.parseColor("#4CAF50")
-                        outlinePaint.strokeWidth = 9f
-                        outlinePaint.alpha       = 210
-                        map.overlays.add(this)
+                if (uiState.selectedLayer == MapLayer.CYCLING) {
+                    uiState.cyclingPaths.forEach { path ->
+                        Polyline(map).apply {
+                            setPoints(path.points)
+                            val (color, width) = when (path.type) {
+                                PathType.CYCLEWAY -> Pair(COLOR_CYCLEWAY, 9f)
+                                PathType.PATH     -> Pair(COLOR_PATH,     7f)
+                                PathType.TRACK    -> Pair(COLOR_TRACK,    7f)
+                            }
+                            outlinePaint.color       = color
+                            outlinePaint.strokeWidth = width
+                            outlinePaint.alpha       = 220
+                            outlinePaint.strokeCap   = android.graphics.Paint.Cap.ROUND
+                            outlinePaint.strokeJoin  = android.graphics.Paint.Join.ROUND
+                            map.overlays.add(this)
+                        }
                     }
                 }
 
-                // heatmap de cobertura
-                val heatmap = heatmapOverlayRef.value ?: return@AndroidView
+                // zonas seguras — círculos e marcadores (sempre visíveis)
+                map.overlays.removeAll { it is ZoneCircle || it is ZoneMarker }
+                uiState.safeZones.forEach { zone ->
+                    if (zone.lat == 0.0 && zone.lng == 0.0) return@forEach
+                    val center = GeoPoint(zone.lat, zone.lng)
 
-                if (uiState.showCoverage) {
-                    heatmap.updateTowers(uiState.coverageTowers)
-                    if (!map.overlays.contains(heatmap)) {
-                        map.overlays.add(heatmap)
+                    // Círculo de raio — cor da zona com transparência
+                    val zoneArgb = try { android.graphics.Color.parseColor(zone.color) }
+                                   catch (_: Exception) { android.graphics.Color.parseColor("#FF6F00") }
+                    val circle = ZoneCircle().apply {
+                        points = circlePoints(center, zone.radiusM.toDouble())
+                        fillPaint.color    = android.graphics.Color.argb(45,
+                            android.graphics.Color.red(zoneArgb),
+                            android.graphics.Color.green(zoneArgb),
+                            android.graphics.Color.blue(zoneArgb))
+                        outlinePaint.color = zoneArgb
+                        outlinePaint.strokeWidth = 3f
                     }
-                } else {
-                    map.overlays.remove(heatmap)
+                    map.overlays.add(circle)
+
+                    // Marcador central com ícone de casa na cor da zona
+                    val icon = markerIconCache.getOrPut(zone.color) { createHouseMarkerIcon(context, zone.color) }
+                    val marker = ZoneMarker(map).apply {
+                        position = center
+                        title    = zone.name
+                        this.icon = icon
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        setOnMarkerClickListener { _, _ ->
+                            viewModel.selectZone(zone.id)
+                            true
+                        }
+                    }
+                    map.overlays.add(marker)
                 }
 
                 map.invalidate()
@@ -127,243 +186,694 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // chips de controlo (topo)
+        // ── Barra superior ─────────────────────────────────────────────────
         Row(
             modifier = Modifier
-                .align(Alignment.TopStart)
+                .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(start = 12.dp, top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment     = Alignment.Top,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Camada Normal
-            MapChip(
-                label    = "🗺  Normal",
-                selected = uiState.selectedLayer == MapLayer.STANDARD,
-                onClick  = { viewModel.setLayer(MapLayer.STANDARD) }
+            // Toggle de camada — segmented pill
+            LayerToggle(
+                selected = uiState.selectedLayer,
+                onSelect = viewModel::setLayer
             )
-            // Camada Ciclismo
-            MapChip(
-                label    = "🚴  Ciclismo",
-                selected = uiState.selectedLayer == MapLayer.CYCLING,
-                onClick  = { viewModel.setLayer(MapLayer.CYCLING) }
-            )
-            // Toggle cobertura de rede
-            MapChip(
-                label    = if (uiState.isLoadingCoverage) "📶  A carregar…"
-                           else if (uiState.showCoverage) "📶  Rede ✓"
-                           else "📶  Rede",
-                selected = uiState.showCoverage,
-                accentColor = Color(0xFF4FC3F7),   // azul para distinguir
-                onClick  = {
-                    viewModel.toggleCoverage(userLocation.latitude, userLocation.longitude)
-                }
-            )
-        }
 
-        // card meteo (topo direito)
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .statusBarsPadding()
-                .padding(end = 12.dp, top = 12.dp)
-        ) {
-            when {
-                uiState.isLoadingWeather -> CircularProgressIndicator(
-                    modifier = Modifier.size(28.dp), color = VitalGreen, strokeWidth = 2.dp
+            Spacer(Modifier.width(8.dp))
+
+            // Card meteo
+            if (!uiState.isLoadingWeather && uiState.weatherInfo != null) {
+                WeatherCard(uiState.weatherInfo!!)
+            } else if (uiState.isLoadingWeather) {
+                CircularProgressIndicator(
+                    modifier    = Modifier.size(28.dp),
+                    color       = VitalGreen,
+                    strokeWidth = 2.dp
                 )
-                uiState.weatherInfo != null -> WeatherOverlayCard(uiState.weatherInfo!!)
             }
         }
 
-        // legenda de cobertura (centro-inferior)
-        AnimatedVisibility(
-            visible = uiState.showCoverage && !uiState.isLoadingCoverage,
+        // ── Painel inferior — ciclovias ─────────────────────────────────────
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 88.dp),
-            enter = fadeIn(),
-            exit  = fadeOut()
+                .padding(start = 12.dp, end = 12.dp, bottom = 80.dp)
+                .fillMaxWidth()
         ) {
-            CoverageLegendCard(towerCount = uiState.towerCount)
+            CyclingInfoPanel(
+                uiState    = uiState,
+                onRadius   = viewModel::setSearchRadius,
+                onRefresh  = viewModel::refreshPaths
+            )
         }
 
-        // erro de cobertura
-        uiState.coverageError?.let { err ->
-            AnimatedVisibility(
-                visible = uiState.showCoverage,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 88.dp),
-                enter = fadeIn(), exit = fadeOut()
-            ) {
-                Surface(
-                    color = Color(0xDD1A0000),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        text     = err,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        color    = Color(0xFFFF6B6B),
-                        fontSize = 13.sp
-                    )
-                }
-            }
-        }
-
-        // loading indicator cobertura
-        if (uiState.isLoadingCoverage) {
+        // ── Banner modo "adicionar zona" ────────────────────────────────────
+        if (uiState.isAddingZone) {
             Surface(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 88.dp),
-                color = Color(0xDD111111),
-                shape = RoundedCornerShape(12.dp)
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 72.dp, start = 16.dp, end = 16.dp),
+                color           = Color(0xF0FF6F00),
+                shape           = RoundedCornerShape(14.dp),
+                shadowElevation = 8.dp
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    modifier              = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    CircularProgressIndicator(
-                        modifier    = Modifier.size(16.dp),
-                        color       = Color(0xFF4FC3F7),
-                        strokeWidth = 2.dp
-                    )
+                    Text("📍", fontSize = 18.sp)
                     Text(
-                        "A carregar antenas…",
-                        color    = Color.White,
-                        fontSize = 13.sp
+                        "Toca no mapa para marcar a zona",
+                        color      = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize   = 13.sp,
+                        modifier   = Modifier.weight(1f)
                     )
+                    IconButton(onClick = viewModel::exitAddZoneMode, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    }
                 }
             }
         }
 
-        // fab localização (fundo direito)
+        // ── FAB — minha localização ────────────────────────────────────────
         FloatingActionButton(
             onClick        = { mapViewRef.value?.controller?.animateTo(userLocation, 16.0, 800L) },
             modifier       = Modifier
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
-                .padding(end = 12.dp, bottom = 80.dp),
+                .padding(end = 12.dp, bottom = 84.dp),
             containerColor = Color(0xFF1E1E1E),
             contentColor   = Color.White,
-            shape          = RoundedCornerShape(14.dp)
+            shape          = RoundedCornerShape(14.dp),
+            elevation      = FloatingActionButtonDefaults.elevation(6.dp)
         ) {
-            Icon(Icons.Default.MyLocation, contentDescription = "A minha localização")
+            Icon(Icons.Default.MyLocation, contentDescription = "Minha localização")
+        }
+
+        // ── FAB — adicionar zona segura ────────────────────────────────────
+        FloatingActionButton(
+            onClick        = {
+                if (uiState.isAddingZone) viewModel.exitAddZoneMode()
+                else viewModel.enterAddZoneMode()
+            },
+            modifier       = Modifier
+                .align(Alignment.BottomStart)
+                .navigationBarsPadding()
+                .padding(start = 12.dp, bottom = 84.dp),
+            containerColor = if (uiState.isAddingZone) Color(0xFFFF6F00) else Color(0xFF1E1E1E),
+            contentColor   = Color.White,
+            shape          = RoundedCornerShape(14.dp),
+            elevation      = FloatingActionButtonDefaults.elevation(6.dp)
+        ) {
+            Icon(Icons.Default.AddLocation, contentDescription = "Nova zona segura")
+        }
+
+        // ── Painel de edição de zona (slide-up) ─────────────────────────────
+        AnimatedVisibility(
+            visible  = uiState.selectedZone != null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter    = slideInVertically(initialOffsetY = { it }),
+            exit     = slideOutVertically(targetOffsetY = { it })
+        ) {
+            uiState.selectedZone?.let { zone ->
+                ZoneDetailSheet(
+                    zone              = zone,
+                    editingRadius     = uiState.editingRadius,
+                    editingColor      = uiState.editingColor,
+                    showDeleteConfirm = uiState.showDeleteConfirm,
+                    onRadiusChange    = viewModel::updateEditingRadius,
+                    onColorChange     = viewModel::updateEditingColor,
+                    onSave            = viewModel::saveZoneEdits,
+                    onDeleteRequest   = viewModel::toggleDeleteConfirm,
+                    onDeleteConfirm   = viewModel::deleteSelectedZone,
+                    onDismiss         = viewModel::deselectZone
+                )
+            }
+        }
+
+        // ── Diálogo de nome da zona ─────────────────────────────────────────
+        if (uiState.showZoneNameDialog) {
+            ZoneNameDialog(
+                name         = uiState.pendingZoneName,
+                radius       = uiState.pendingZoneRadius,
+                isSaving     = uiState.isSavingZone,
+                onNameChange = viewModel::updatePendingZoneName,
+                onRadiusChange = viewModel::setPendingZoneRadius,
+                onSave       = viewModel::savePendingZone,
+                onDismiss    = viewModel::dismissZoneDialog
+            )
         }
     }
 }
 
+// ── Componentes ────────────────────────────────────────────────────────────────
 
 @Composable
-private fun MapChip(
-    label: String,
-    selected: Boolean,
-    accentColor: Color = VitalGreen,
-    onClick: () -> Unit
-) {
+private fun LayerToggle(selected: MapLayer, onSelect: (MapLayer) -> Unit) {
     Surface(
-        onClick         = onClick,
-        color           = if (selected) accentColor else Color(0xDD111111),
-        contentColor    = if (selected) Color.Black else Color.White,
-        shape           = RoundedCornerShape(20.dp),
-        shadowElevation = 4.dp
+        color           = Color(0xEE111111),
+        shape           = RoundedCornerShape(22.dp),
+        shadowElevation = 6.dp
+    ) {
+        Row(modifier = Modifier.padding(4.dp)) {
+            ToggleOption(
+                label    = "🗺  Normal",
+                active   = selected == MapLayer.STANDARD,
+                onClick  = { onSelect(MapLayer.STANDARD) }
+            )
+            Spacer(Modifier.width(2.dp))
+            ToggleOption(
+                label    = "🚴  Ciclismo",
+                active   = selected == MapLayer.CYCLING,
+                onClick  = { onSelect(MapLayer.CYCLING) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToggleOption(label: String, active: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick      = onClick,
+        color        = if (active) VitalGreen else Color.Transparent,
+        contentColor = if (active) Color.Black else Color.White,
+        shape        = RoundedCornerShape(18.dp)
     ) {
         Text(
             text       = label,
             modifier   = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal,
+            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
             fontSize   = 13.sp
         )
     }
 }
 
 @Composable
-private fun WeatherOverlayCard(weather: WeatherInfo) {
+private fun WeatherCard(weather: WeatherInfo) {
     Surface(
-        color = Color(0xDD111111),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(weather.temperature, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
-            Text(weather.condition,   color = Color.Gray,  fontSize = 11.sp)
-            Spacer(Modifier.height(4.dp))
-            Text(weather.humidity, color = Color.Gray, fontSize = 11.sp)
-            Text(weather.wind,     color = Color.Gray, fontSize = 11.sp)
-        }
-    }
-}
-
-@Composable
-private fun CoverageLegendCard(towerCount: Int) {
-    Surface(
-        color  = Color(0xF0111111),
-        shape  = RoundedCornerShape(14.dp),
+        color           = Color(0xEE111111),
+        shape           = RoundedCornerShape(16.dp),
         shadowElevation = 6.dp
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Row(
-                verticalAlignment     = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    Icons.Default.SignalCellularAlt,
-                    null,
-                    tint     = Color(0xFF4FC3F7),
-                    modifier = Modifier.size(14.dp)
-                )
+        Row(
+            modifier          = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(weather.icon, fontSize = 24.sp)
+            Column {
                 Text(
-                    "Cobertura de Rede Móvel",
+                    weather.temperature,
                     color      = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize   = 12.sp
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize   = 18.sp,
+                    lineHeight = 20.sp
                 )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    "$towerCount antenas",
-                    color    = Color.Gray,
-                    fontSize = 11.sp
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment     = Alignment.CenterVertically
-            ) {
-                LegendItem(Color(0xFF1ECC50), "Boa cobertura")
-                LegendItem(Color(0xFFDDCC00), "Cobertura média")
-                LegendItem(Color(0xFFCC2222), "Sem cobertura")
+                Text(weather.condition, color = Color.Gray, fontSize = 10.sp, lineHeight = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(weather.humidity, color = Color(0xFF90CAF9), fontSize = 10.sp)
+                    Text(weather.wind,     color = Color(0xFFB0BEC5), fontSize = 10.sp)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun LegendItem(color: Color, label: String) {
+private fun CyclingInfoPanel(
+    uiState: MapsUiState,
+    onRadius: (Int) -> Unit,
+    onRefresh: () -> Unit
+) {
+    Surface(
+        color           = Color(0xF0111111),
+        shape           = RoundedCornerShape(18.dp),
+        shadowElevation = 8.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+
+            // linha de estado
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                AnimatedContent(
+                    targetState = Triple(uiState.isLoadingPaths, uiState.pathsLoaded, uiState.pathsError),
+                    label       = "paths_status"
+                ) { (loading, loaded, error) ->
+                    when {
+                        loading -> Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier    = Modifier.size(14.dp),
+                                color       = VitalGreen,
+                                strokeWidth = 2.dp
+                            )
+                            Text("A procurar ciclovias…", color = Color.Gray, fontSize = 13.sp)
+                        }
+                        error != null && uiState.cyclingPaths.isEmpty() -> Text(
+                            "⚠ $error",
+                            color    = Color(0xFFFF6B6B),
+                            fontSize = 13.sp
+                        )
+                        loaded -> PathCountRow(uiState)
+                        else -> Text(
+                            "🚴  Ciclovias",
+                            color      = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize   = 13.sp
+                        )
+                    }
+                }
+
+                // botão de refresh
+                IconButton(
+                    onClick  = onRefresh,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Recarregar",
+                        tint     = Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(color = Color(0xFF2A2A2A))
+            Spacer(Modifier.height(10.dp))
+
+            // Seletor de raio
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Raio", color = Color.Gray, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(3000 to "3 km", 5000 to "5 km", 10000 to "10 km", 20000 to "20 km").forEach { (m, label) ->
+                        RadiusChip(
+                            label    = label,
+                            selected = uiState.searchRadiusM == m,
+                            onClick  = { onRadius(m) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PathCountRow(uiState: MapsUiState) {
+    val total = uiState.cyclingPaths.size
     Row(
         verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Surface(
-            modifier = Modifier.size(10.dp),
-            color    = color,
-            shape    = RoundedCornerShape(50)
-        ) {}
+        Text(
+            "🚴  $total vias",
+            color      = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize   = 13.sp
+        )
+        if (uiState.cyclewayCount > 0) LegendDot(Color(0xFF00C853), "${uiState.cyclewayCount} ciclov.")
+        if (uiState.pathCount     > 0) LegendDot(Color(0xFF29B6F6), "${uiState.pathCount} camin.")
+        if (uiState.trackCount    > 0) LegendDot(Color(0xFFFFA726), "${uiState.trackCount} trilho")
+    }
+}
+
+@Composable
+private fun LegendDot(color: Color, label: String) {
+    Row(
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
         Text(label, color = Color.Gray, fontSize = 10.sp)
     }
 }
 
+@Composable
+private fun RadiusChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick         = onClick,
+        color           = if (selected) VitalGreen else Color(0xFF1E1E1E),
+        contentColor    = if (selected) Color.Black else Color.Gray,
+        shape           = RoundedCornerShape(12.dp),
+        shadowElevation = if (selected) 2.dp else 0.dp
+    ) {
+        Text(
+            text       = label,
+            modifier   = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            fontSize   = 11.sp
+        )
+    }
+}
 
-private fun cyclOSMTileSource(): OnlineTileSourceBase =
+// ── Painel de edição de zona segura ────────────────────────────────────────────
+
+private val ZONE_COLORS = listOf(
+    "#FF6F00", "#4CAF50", "#2196F3", "#F44336", "#9C27B0", "#00BCD4"
+)
+
+@Composable
+private fun ZoneDetailSheet(
+    zone: com.studio.vitalroute.data.model.FirestoreSafeZone,
+    editingRadius: Int,
+    editingColor: String,
+    showDeleteConfirm: Boolean,
+    onRadiusChange: (Int) -> Unit,
+    onColorChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onDeleteRequest: () -> Unit,
+    onDeleteConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Surface(
+        modifier        = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding(),
+        color           = Color(0xFF1A1A1A),
+        shape           = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        shadowElevation = 16.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+
+            // Barra de arrasto + fechar
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier
+                        .width(40.dp).height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color(0xFF444444))
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Close, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Nome da zona com ícone colorido
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier         = Modifier.size(36.dp).clip(CircleShape)
+                        .background(Color(android.graphics.Color.parseColor(editingColor))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🏠", fontSize = 18.sp)
+                }
+                Column {
+                    Text(zone.name, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                    if (zone.address.isNotBlank())
+                        Text(zone.address, color = Color.Gray, fontSize = 11.sp)
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            HorizontalDivider(color = Color(0xFF2A2A2A))
+            Spacer(Modifier.height(16.dp))
+
+            // Cor do ícone
+            Text("Cor do ícone", color = Color.Gray, fontSize = 12.sp)
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ZONE_COLORS.forEach { hex ->
+                    val selected = editingColor == hex
+                    val sizeDp   = if (selected) 36.dp else 30.dp
+                    var mod = Modifier
+                        .size(sizeDp)
+                        .clip(CircleShape)
+                        .background(Color(android.graphics.Color.parseColor(hex)))
+                        .clickable { onColorChange(hex) }
+                    if (selected) mod = mod.border(2.5.dp, Color.White, CircleShape)
+                    Box(modifier = mod)
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // Raio de deteção
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                Text("Raio de deteção", color = Color.Gray, fontSize = 12.sp)
+                Text("$editingRadius m", color = VitalOrange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(4.dp))
+            Slider(
+                value         = editingRadius.toFloat(),
+                onValueChange = { onRadiusChange(it.toInt()) },
+                valueRange    = 25f..500f,
+                colors        = SliderDefaults.colors(
+                    thumbColor         = VitalOrange,
+                    activeTrackColor   = VitalOrange,
+                    inactiveTrackColor = Color(0xFF333333)
+                )
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("25 m",  color = Color.DarkGray, fontSize = 10.sp)
+                Text("500 m", color = Color.DarkGray, fontSize = 10.sp)
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // Confirmação de eliminação ou botões normais
+            if (showDeleteConfirm) {
+                Surface(color = Color(0xFF2A0000), shape = RoundedCornerShape(12.dp)) {
+                    Row(
+                        modifier              = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Apagar esta zona?", color = Color(0xFFFF6B6B), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = onDeleteRequest) { Text("Cancelar", color = Color.Gray, fontSize = 12.sp) }
+                            Button(
+                                onClick = onDeleteConfirm,
+                                colors  = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F), contentColor = Color.White)
+                            ) { Text("Apagar", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                }
+            } else {
+                Row(
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDeleteRequest,
+                        modifier = Modifier.weight(1f),
+                        border  = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF992222)),
+                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF6B6B))
+                    ) {
+                        Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Apagar", fontSize = 13.sp)
+                    }
+                    Button(
+                        onClick  = onSave,
+                        modifier = Modifier.weight(1f),
+                        colors   = ButtonDefaults.buttonColors(containerColor = VitalOrange, contentColor = Color.Black)
+                    ) {
+                        Text("Guardar", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+// ── Diálogo de nome da zona segura ─────────────────────────────────────────────
+
+@Composable
+private fun ZoneNameDialog(
+    name: String,
+    radius: Int,
+    isSaving: Boolean,
+    onNameChange: (String) -> Unit,
+    onRadiusChange: (Int) -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboard       = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            color  = Color(0xFF1A1A1A),
+            shape  = RoundedCornerShape(20.dp),
+            shadowElevation = 12.dp
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text("📍  Nova Zona Segura", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                Spacer(Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value         = name,
+                    onValueChange = onNameChange,
+                    label         = { Text("Nome (ex: Casa, Trabalho)", color = Color.Gray, fontSize = 12.sp) },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                    colors        = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor   = VitalOrange,
+                        unfocusedBorderColor = Color(0xFF333333),
+                        focusedTextColor     = Color.White,
+                        unfocusedTextColor   = Color.White,
+                        cursorColor          = VitalOrange
+                    ),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { keyboard?.hide() })
+                )
+
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
+                    Text("Raio de chegada", color = Color.Gray, fontSize = 12.sp)
+                    Text("$radius m", color = VitalOrange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+                Spacer(Modifier.height(4.dp))
+                Slider(
+                    value         = radius.toFloat(),
+                    onValueChange = { onRadiusChange(it.toInt()) },
+                    valueRange    = 25f..500f,
+                    colors        = SliderDefaults.colors(
+                        thumbColor       = VitalOrange,
+                        activeTrackColor = VitalOrange,
+                        inactiveTrackColor = Color(0xFF333333)
+                    )
+                )
+                Row(
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("25 m", color = Color.DarkGray, fontSize = 10.sp)
+                    Text("500 m", color = Color.DarkGray, fontSize = 10.sp)
+                }
+
+                Spacer(Modifier.height(20.dp))
+                Row(
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancelar", color = Color.Gray)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick  = onSave,
+                        enabled  = name.isNotBlank() && !isSaving,
+                        colors   = ButtonDefaults.buttonColors(containerColor = VitalOrange, contentColor = Color.Black)
+                    ) {
+                        if (isSaving) CircularProgressIndicator(Modifier.size(16.dp), color = Color.Black, strokeWidth = 2.dp)
+                        else Text("Guardar", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Classes de overlay para zonas (para identificar e remover seletivamente) ───
+
+private class ZoneCircle : Polygon()
+private class ZoneMarker(map: MapView) : Marker(map)
+
+private fun createHouseMarkerIcon(context: Context, colorHex: String = "#FF6F00"): BitmapDrawable {
+    val size = 80
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    val parsedColor = try { android.graphics.Color.parseColor(colorHex) }
+                      catch (_: Exception) { android.graphics.Color.parseColor("#FF6F00") }
+
+    // Fundo: círculo na cor da zona
+    val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = parsedColor
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(size / 2f, size / 2f, size / 2f, bgPaint)
+
+    val housePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+    }
+
+    // Telhado (triângulo)
+    val roof = Path().apply {
+        moveTo(size * 0.50f, size * 0.14f)
+        lineTo(size * 0.12f, size * 0.50f)
+        lineTo(size * 0.88f, size * 0.50f)
+        close()
+    }
+    canvas.drawPath(roof, housePaint)
+
+    // Corpo da casa
+    canvas.drawRect(size * 0.22f, size * 0.47f, size * 0.78f, size * 0.82f, housePaint)
+
+    // Porta (recorte com a cor da zona)
+    val doorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = parsedColor
+        style = Paint.Style.FILL
+    }
+    canvas.drawRect(size * 0.38f, size * 0.60f, size * 0.62f, size * 0.82f, doorPaint)
+
+    return BitmapDrawable(context.resources, bitmap)
+}
+
+private fun circlePoints(center: GeoPoint, radiusM: Double): List<GeoPoint> {
+    val latRad = Math.toRadians(center.latitude)
+    return (0..36).map { i ->
+        val angle = Math.toRadians(i * 10.0)
+        val dLat  = (radiusM / 111_000.0) * cos(angle)
+        val dLon  = (radiusM / (111_000.0 * cos(latRad))) * sin(angle)
+        GeoPoint(center.latitude + dLat, center.longitude + dLon)
+    }
+}
+
+// ── Tile source ─────────────────────────────────────────────────────────────────
+// CartoDB Dark Matter: mapa escuro minimalista — apenas ruas principais a zoom baixo,
+// ruas menores e labels surgem progressivamente conforme o zoom aumenta.
+
+private fun cartoDarkTileSource(): OnlineTileSourceBase =
     object : OnlineTileSourceBase(
-        "CyclOSM", 1, 19, 256, ".png",
+        "CartoDark", 1, 19, 256, ".png",
         arrayOf(
-            "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/",
-            "https://b.tile-cyclosm.openstreetmap.fr/cyclosm/",
-            "https://c.tile-cyclosm.openstreetmap.fr/cyclosm/"
+            "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://c.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://d.basemaps.cartocdn.com/rastertiles/voyager/"
         )
     ) {
         override fun getTileURLString(pMapTileIndex: Long): String =
@@ -384,4 +894,4 @@ private fun getDeviceLocation(context: Context): GeoPoint? = try {
             ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
         loc?.let { GeoPoint(it.latitude, it.longitude) }
     }
-} catch (e: Exception) { null }
+} catch (_: Exception) { null }
