@@ -37,8 +37,21 @@ interface OverpassApiService {
 
 object OverpassRetrofit {
     val service: OverpassApiService by lazy {
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                val req = chain.request().newBuilder()
+                    .header("Accept", "*/*")
+                    .header("User-Agent", "VitalRoute/1.0 (Android)")
+                    .build()
+                chain.proceed(req)
+            }
+            .build()
         Retrofit.Builder()
             .baseUrl("https://overpass-api.de/")
+            .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(OverpassApiService::class.java)

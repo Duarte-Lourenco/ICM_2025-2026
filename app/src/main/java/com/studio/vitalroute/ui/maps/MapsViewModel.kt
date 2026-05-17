@@ -34,10 +34,8 @@ data class CyclingPath(
 )
 
 data class MapsUiState(
-    // Meteo
     val isLoadingWeather: Boolean = true,
     val weatherInfo: WeatherInfo? = null,
-    // Ciclovias
     val isLoadingPaths: Boolean = false,
     val cyclingPaths: List<CyclingPath> = emptyList(),
     val pathsLoaded: Boolean = false,
@@ -45,7 +43,6 @@ data class MapsUiState(
     val cyclewayCount: Int = 0,
     val pathCount: Int = 0,
     val trackCount: Int = 0,
-    // Zonas seguras — lista e criação
     val safeZones: List<FirestoreSafeZone> = emptyList(),
     val isAddingZone: Boolean = false,
     val showZoneNameDialog: Boolean = false,
@@ -54,13 +51,11 @@ data class MapsUiState(
     val pendingZoneName: String = "",
     val pendingZoneRadius: Int = 150,
     val isSavingZone: Boolean = false,
-    // Zona segura selecionada — painel de edição
     val selectedZone: FirestoreSafeZone? = null,
     val editingRadius: Int = 150,
     val editingColor: String = "#FF6F00",
     val showDeleteConfirm: Boolean = false,
-    // Mapa
-    val selectedLayer: MapLayer = MapLayer.CYCLING,
+    val selectedLayer: MapLayer = MapLayer.STANDARD,
     val searchRadiusM: Int = 5000,
     val centerLat: Double = 40.6405,
     val centerLon: Double = -8.6568
@@ -80,8 +75,6 @@ class MapsViewModel : ViewModel() {
         fetchWeather()
         loadSafeZones()
     }
-
-    // meteorologia
 
     fun fetchWeather(
         lat: Double = _uiState.value.centerLat,
@@ -122,8 +115,6 @@ class MapsViewModel : ViewModel() {
         in 95..99   -> "⛈️"
         else        -> "🌡️"
     }
-
-    // ciclovias
 
     fun fetchCyclingPaths(
         lat: Double = _uiState.value.centerLat,
@@ -174,22 +165,19 @@ class MapsViewModel : ViewModel() {
                         pathsError     = if (paths.isEmpty()) "Sem ciclovias nesta área" else null
                     )
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.e("MapsViewModel", "fetchCyclingPaths [${e::class.simpleName}]: ${e.message}")
                 _uiState.update {
-                    it.copy(isLoadingPaths = false, pathsError = "Erro ao carregar ciclovias")
+                    it.copy(isLoadingPaths = false, pathsError = "${e::class.simpleName}: ${e.message?.take(80)}")
                 }
             }
         }
     }
 
-    // raio de pesquisa
-
     fun setSearchRadius(meters: Int) {
         _uiState.update { it.copy(searchRadiusM = meters, pathsLoaded = false) }
         fetchCyclingPaths()
     }
-
-    // zonas seguras
 
     private fun loadSafeZones() {
         viewModelScope.launch {
@@ -216,8 +204,6 @@ class MapsViewModel : ViewModel() {
     fun dismissZoneDialog() {
         _uiState.update { it.copy(showZoneNameDialog = false, isAddingZone = false, pendingZoneName = "") }
     }
-
-    // edição de zona existente
 
     fun selectZone(zoneId: String) {
         val zone = _uiState.value.safeZones.find { it.id == zoneId } ?: return
@@ -280,21 +266,17 @@ class MapsViewModel : ViewModel() {
         }
     }
 
-    // camada de mapa
-
     fun setLayer(layer: MapLayer) {
         _uiState.update { it.copy(selectedLayer = layer) }
+        if (layer == MapLayer.CYCLING && !_uiState.value.pathsLoaded) {
+            fetchCyclingPaths()
+        }
     }
-
-    // centro do mapa (chamado quando a localização do utilizador é conhecida)
 
     fun updateCenter(lat: Double, lon: Double) {
         _uiState.update { it.copy(centerLat = lat, centerLon = lon) }
         fetchWeather(lat, lon)
-        fetchCyclingPaths(lat, lon)
     }
-
-    // recarregar ciclovias para a posição atual (botão de refresh)
 
     fun refreshPaths() {
         _uiState.update { it.copy(pathsLoaded = false) }

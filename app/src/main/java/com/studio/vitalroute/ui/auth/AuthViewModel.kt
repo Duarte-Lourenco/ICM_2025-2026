@@ -56,24 +56,12 @@ class AuthViewModel : ViewModel() {
             try {
                 auth.signInWithEmailAndPassword(email.trim(), password).await()
                 val user = auth.currentUser
-                if (user?.isEmailVerified == true) {
+                // dev: bypass verificacao - remover antes de entregar
+                if (user != null) {
                     _uiState.update { it.copy(isLoading = false, isLoggedIn = true) }
-                } else {
-                    var emailSentOk = false
-                    try {
-                        user?.sendEmailVerification()?.await()
-                        emailSentOk = true
-                        Log.d("AuthViewModel", "Verification email sent to ${email.trim()}")
-                    } catch (emailEx: Exception) {
-                        Log.e("AuthViewModel", "sendEmailVerification failed: ${emailEx.message}")
-                    }
-                    _uiState.update {
-                        it.copy(isLoading = false, isEmailVerificationPending = true,
-                            pendingEmail = email.trim(), verificationEmailSent = emailSentOk,
-                            error = if (!emailSentOk) "Falhou o envio do email de verificação. Usa 'Reenviar email'." else null)
-                    }
                 }
             } catch (e: Exception) {
+                Log.e("AuthViewModel", "signIn error [${e::class.simpleName}]: ${e.message}")
                 _uiState.update { it.copy(isLoading = false, error = parseFirebaseError(e.message)) }
             }
         }
@@ -119,6 +107,7 @@ class AuthViewModel : ViewModel() {
                         error = if (!emailSentOk) "Conta criada, mas falhou o envio do email de verificação. Usa 'Reenviar email'." else null)
                 }
             } catch (e: Exception) {
+                Log.e("AuthViewModel", "signUp error [${e::class.simpleName}]: ${e.message}")
                 _uiState.update { it.copy(isLoading = false, error = parseFirebaseError(e.message)) }
             }
         }
@@ -155,8 +144,6 @@ class AuthViewModel : ViewModel() {
             }
         }
     }
-
-    // --- Recuperação de password ---
 
     fun startForgotPassword(emailPrefill: String = "") {
         _uiState.update { it.copy(isForgotPassword = true, forgotEmail = emailPrefill,
@@ -220,7 +207,7 @@ class AuthViewModel : ViewModel() {
         message.contains("user-not-found")       -> "Email ou password incorretos"
         message.contains("email-already-in-use") -> "Este email já está registado"
         message.contains("invalid-email")        -> "Email inválido"
-        message.contains("network")              -> "Sem ligação à Internet. Verifica a internet do emulador ou usa 'Continuar como Convidado'"
+        message.contains("network") || message.contains("NETWORK") -> "Erro de rede: ${message.take(120)}"
         message.contains("too-many-requests")    -> "Demasiadas tentativas. Tenta mais tarde"
         else -> message
     }

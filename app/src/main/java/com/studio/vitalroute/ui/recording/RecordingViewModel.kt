@@ -45,7 +45,11 @@ data class RecordingUiState(
     val isLocationSharing: Boolean = false,
     val locationSharingEnabled: Boolean = false,
     // Geofencing
-    val arrivedAtZone: String? = null
+    val arrivedAtZone: String? = null,
+    // Mapa em tempo real
+    val currentLat: Double = 0.0,
+    val currentLng: Double = 0.0,
+    val routePoints: List<String> = emptyList()
 )
 
 
@@ -97,7 +101,10 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                         sosSent               = s.sosSent,
                         lastAlertLabel        = s.lastAlertLabel,
                         isLocationSharing     = s.isLocationSharing,
-                        arrivedAtZone         = s.arrivedAtZone
+                        arrivedAtZone         = s.arrivedAtZone,
+                        currentLat            = s.currentLat,
+                        currentLng            = s.currentLng,
+                        routePoints           = s.routePoints
                     )
                 }
             }

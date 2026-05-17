@@ -11,6 +11,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.location.LocationManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -186,42 +187,73 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // ── Barra superior ─────────────────────────────────────────────────
-        Row(
+        // ── Barra superior + banner (Column para evitar sobreposição) ─────────
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment     = Alignment.Top,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 12.dp, vertical = 12.dp)
         ) {
-            // Toggle de camada — segmented pill
-            LayerToggle(
-                selected = uiState.selectedLayer,
-                onSelect = viewModel::setLayer
-            )
-
-            Spacer(Modifier.width(8.dp))
-
-            // Card meteo
-            if (!uiState.isLoadingWeather && uiState.weatherInfo != null) {
-                WeatherCard(uiState.weatherInfo!!)
-            } else if (uiState.isLoadingWeather) {
-                CircularProgressIndicator(
-                    modifier    = Modifier.size(28.dp),
-                    color       = VitalGreen,
-                    strokeWidth = 2.dp
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                verticalAlignment     = Alignment.Top,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                LayerToggle(
+                    selected = uiState.selectedLayer,
+                    onSelect = viewModel::setLayer
                 )
+                Spacer(Modifier.width(8.dp))
+                if (!uiState.isLoadingWeather && uiState.weatherInfo != null) {
+                    WeatherCard(uiState.weatherInfo!!)
+                } else if (uiState.isLoadingWeather) {
+                    CircularProgressIndicator(
+                        modifier    = Modifier.size(28.dp),
+                        color       = VitalGreen,
+                        strokeWidth = 2.dp
+                    )
+                }
+            }
+            // Banner "adicionar zona" — logo abaixo da barra de topo, sem sobreposição
+            if (uiState.isAddingZone) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    modifier        = Modifier.fillMaxWidth(),
+                    color           = Color(0xF0FF6F00),
+                    shape           = RoundedCornerShape(14.dp),
+                    shadowElevation = 8.dp
+                ) {
+                    Row(
+                        modifier              = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("📍", fontSize = 18.sp)
+                        Text(
+                            "Toca no mapa para marcar a zona",
+                            color      = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize   = 13.sp,
+                            modifier   = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = viewModel::exitAddZoneMode, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
             }
         }
 
-        // ── Painel inferior — ciclovias ─────────────────────────────────────
-        Box(
+        // ── Painel inferior — ciclovias (só visível no modo ciclismo) ─────────
+        AnimatedVisibility(
+            visible  = uiState.selectedLayer == MapLayer.CYCLING && uiState.selectedZone == null,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(start = 12.dp, end = 12.dp, bottom = 80.dp)
-                .fillMaxWidth()
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+            enter    = slideInVertically(initialOffsetY = { it }),
+            exit     = slideOutVertically(targetOffsetY = { it })
         ) {
             CyclingInfoPanel(
                 uiState    = uiState,
@@ -230,68 +262,41 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             )
         }
 
-        // ── Banner modo "adicionar zona" ────────────────────────────────────
-        if (uiState.isAddingZone) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 72.dp, start = 16.dp, end = 16.dp),
-                color           = Color(0xF0FF6F00),
-                shape           = RoundedCornerShape(14.dp),
-                shadowElevation = 8.dp
+        // ── FABs — acima do painel de ciclovias quando visível ──────────────
+        val fabBottomPadding by animateDpAsState(
+            targetValue = if (uiState.selectedLayer == MapLayer.CYCLING) 130.dp else 16.dp,
+            label       = "fabBottom"
+        )
+        if (uiState.selectedZone == null) {
+            FloatingActionButton(
+                onClick        = { mapViewRef.value?.controller?.animateTo(userLocation, 16.0, 800L) },
+                modifier       = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 12.dp, bottom = fabBottomPadding),
+                containerColor = Color(0xFF1E1E1E),
+                contentColor   = Color.White,
+                shape          = RoundedCornerShape(14.dp),
+                elevation      = FloatingActionButtonDefaults.elevation(6.dp)
             ) {
-                Row(
-                    modifier              = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment     = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text("📍", fontSize = 18.sp)
-                    Text(
-                        "Toca no mapa para marcar a zona",
-                        color      = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize   = 13.sp,
-                        modifier   = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = viewModel::exitAddZoneMode, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                    }
-                }
+                Icon(Icons.Default.MyLocation, contentDescription = "Minha localização")
             }
-        }
-
-        // ── FAB — minha localização ────────────────────────────────────────
-        FloatingActionButton(
-            onClick        = { mapViewRef.value?.controller?.animateTo(userLocation, 16.0, 800L) },
-            modifier       = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(end = 12.dp, bottom = 84.dp),
-            containerColor = Color(0xFF1E1E1E),
-            contentColor   = Color.White,
-            shape          = RoundedCornerShape(14.dp),
-            elevation      = FloatingActionButtonDefaults.elevation(6.dp)
-        ) {
-            Icon(Icons.Default.MyLocation, contentDescription = "Minha localização")
-        }
-
-        // ── FAB — adicionar zona segura ────────────────────────────────────
-        FloatingActionButton(
-            onClick        = {
-                if (uiState.isAddingZone) viewModel.exitAddZoneMode()
-                else viewModel.enterAddZoneMode()
-            },
-            modifier       = Modifier
-                .align(Alignment.BottomStart)
-                .navigationBarsPadding()
-                .padding(start = 12.dp, bottom = 84.dp),
-            containerColor = if (uiState.isAddingZone) Color(0xFFFF6F00) else Color(0xFF1E1E1E),
-            contentColor   = Color.White,
-            shape          = RoundedCornerShape(14.dp),
-            elevation      = FloatingActionButtonDefaults.elevation(6.dp)
-        ) {
-            Icon(Icons.Default.AddLocation, contentDescription = "Nova zona segura")
+            FloatingActionButton(
+                onClick        = {
+                    if (uiState.isAddingZone) viewModel.exitAddZoneMode()
+                    else viewModel.enterAddZoneMode()
+                },
+                modifier       = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 12.dp, bottom = fabBottomPadding),
+                containerColor = if (uiState.isAddingZone) Color(0xFFFF6F00) else Color(0xFF1E1E1E),
+                contentColor   = Color.White,
+                shape          = RoundedCornerShape(14.dp),
+                elevation      = FloatingActionButtonDefaults.elevation(6.dp)
+            ) {
+                Icon(Icons.Default.AddLocation, contentDescription = "Nova zona segura")
+            }
         }
 
         // ── Painel de edição de zona (slide-up) ─────────────────────────────

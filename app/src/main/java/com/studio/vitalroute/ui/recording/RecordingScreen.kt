@@ -6,6 +6,17 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.viewinterop.AndroidView
+import java.io.File
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
@@ -291,7 +302,19 @@ fun RecordingScreen(
                 )
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(16.dp))
+
+            // mapa em tempo real (visível durante gravação)
+            if (uiState.isRecording) {
+                LiveTrackingMap(
+                    currentLat  = uiState.currentLat,
+                    currentLng  = uiState.currentLng,
+                    routePoints = uiState.routePoints
+                )
+                Spacer(Modifier.height(16.dp))
+            } else {
+                Spacer(Modifier.height(12.dp))
+            }
 
             // diálogo: sms negado
             if (showSmsRationale) {
@@ -609,6 +632,104 @@ fun SosCountdownOverlay(
     }
 }
 
+
+@Composable
+private fun LiveTrackingMap(
+    currentLat: Double,
+    currentLng: Double,
+    routePoints: List<String>
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors   = CardDefaults.cardColors(containerColor = Color(0xFF141414)),
+        shape    = RoundedCornerShape(16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+        ) {
+            AndroidView(
+                factory = { ctx ->
+                    Configuration.getInstance().apply {
+                        userAgentValue     = ctx.packageName
+                        osmdroidBasePath   = File(ctx.cacheDir, "osmdroid")
+                        osmdroidTileCache  = File(ctx.cacheDir, "osmdroid/tiles")
+                    }
+                    MapView(ctx).apply {
+                        setTileSource(liveMapTileSource())
+                        setMultiTouchControls(true)
+                        controller.setZoom(17.0)
+                        val locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
+                        locationOverlay.enableMyLocation()
+                        locationOverlay.enableFollowLocation()
+                        overlays.add(locationOverlay)
+                    }
+                },
+                update = { map ->
+                    map.overlays.removeAll { it is Polyline }
+                    val coords = routePoints.mapNotNull { p ->
+                        val parts = p.split(",")
+                        if (parts.size == 2) {
+                            val lat = parts[0].toDoubleOrNull()
+                            val lng = parts[1].toDoubleOrNull()
+                            if (lat != null && lng != null) GeoPoint(lat, lng) else null
+                        } else null
+                    }
+                    if (coords.size >= 2) {
+                        val polyline = Polyline(map).apply {
+                            setPoints(coords)
+                            outlinePaint.color       = android.graphics.Color.parseColor("#4CAF50")
+                            outlinePaint.strokeWidth = 12f
+                            outlinePaint.alpha       = 210
+                            outlinePaint.strokeCap   = android.graphics.Paint.Cap.ROUND
+                            outlinePaint.strokeJoin  = android.graphics.Paint.Join.ROUND
+                        }
+                        map.overlays.add(polyline)
+                    }
+                    map.invalidate()
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp))
+            )
+            // Badge "EM DIRETO"
+            Surface(
+                modifier  = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
+                color     = Color(0xBB111111),
+                shape     = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text          = "● EM DIRETO",
+                    color         = VitalRed,
+                    fontSize      = 9.sp,
+                    fontWeight    = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp,
+                    modifier      = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun liveMapTileSource(): OnlineTileSourceBase =
+    object : OnlineTileSourceBase(
+        "CartoVoyager", 1, 19, 256, ".png",
+        arrayOf(
+            "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://c.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://d.basemaps.cartocdn.com/rastertiles/voyager/"
+        )
+    ) {
+        override fun getTileURLString(pMapTileIndex: Long): String =
+            baseUrl +
+            MapTileIndex.getZoom(pMapTileIndex) + "/" +
+            MapTileIndex.getX(pMapTileIndex)    + "/" +
+            MapTileIndex.getY(pMapTileIndex)    + mImageFilenameEnding
+    }
 
 @Composable
 private fun MetricCard(

@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -23,14 +24,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.studio.vitalroute.data.ActivityExporter
 import com.studio.vitalroute.data.model.Activity
 import com.studio.vitalroute.ui.theme.*
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Polyline
 
 @Composable
 fun ActivityDetailScreen(
@@ -399,22 +409,17 @@ private fun DetailElevationChart(points: List<Int>) {
 
 @Composable
 private fun DetailRouteMap(points: List<String>) {
-    val coords = points.mapNotNull { p ->
-        val parts = p.split(",")
-        if (parts.size == 2) {
-            val lat = parts[0].toDoubleOrNull()
-            val lng = parts[1].toDoubleOrNull()
-            if (lat != null && lng != null) Pair(lat, lng) else null
-        } else null
+    val coords = remember(points) {
+        points.mapNotNull { p ->
+            val parts = p.split(",")
+            if (parts.size == 2) {
+                val lat = parts[0].toDoubleOrNull()
+                val lng = parts[1].toDoubleOrNull()
+                if (lat != null && lng != null) GeoPoint(lat, lng) else null
+            } else null
+        }
     }
     if (coords.size < 2) return
-
-    val minLat = coords.minOf { it.first }
-    val maxLat = coords.maxOf { it.first }
-    val minLng = coords.minOf { it.second }
-    val maxLng = coords.maxOf { it.second }
-    val latRange = (maxLat - minLat).coerceAtLeast(0.0001)
-    val lngRange = (maxLng - minLng).coerceAtLeast(0.0001)
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -431,32 +436,61 @@ private fun DetailRouteMap(points: List<String>) {
         Text("${coords.size} pontos GPS", color = VitalGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
     }
     Spacer(Modifier.height(8.dp))
-    Canvas(
+
+    AndroidView(
+        factory = { ctx ->
+            Configuration.getInstance().apply {
+                userAgentValue    = ctx.packageName
+                osmdroidBasePath  = File(ctx.cacheDir, "osmdroid")
+                osmdroidTileCache = File(ctx.cacheDir, "osmdroid/tiles")
+            }
+            MapView(ctx).apply {
+                setTileSource(activityDetailTileSource())
+                setMultiTouchControls(true)
+                controller.setZoom(14.0)
+                controller.setCenter(coords.first())
+
+                // Desenha o trajeto
+                val polyline = Polyline(this).apply {
+                    setPoints(coords)
+                    outlinePaint.color       = android.graphics.Color.parseColor("#4CAF50")
+                    outlinePaint.strokeWidth = 12f
+                    outlinePaint.alpha       = 220
+                    outlinePaint.strokeCap   = android.graphics.Paint.Cap.ROUND
+                    outlinePaint.strokeJoin  = android.graphics.Paint.Join.ROUND
+                }
+                overlays.add(polyline)
+
+                // Ajusta o zoom para mostrar todo o trajeto
+                val minLat = coords.minOf { it.latitude }
+                val maxLat = coords.maxOf { it.latitude }
+                val minLng = coords.minOf { it.longitude }
+                val maxLng = coords.maxOf { it.longitude }
+                val bb = BoundingBox(maxLat, maxLng, minLat, minLng)
+                post { zoomToBoundingBox(bb, false, 80) }
+            }
+        },
+        update = { map -> map.invalidate() },
         modifier = Modifier
             .fillMaxWidth()
-            .height(120.dp)
-            .background(Color(0xFF111111), RoundedCornerShape(10.dp))
-    ) {
-        val w = size.width
-        val h = size.height
-        val padding = 14f
-
-        fun project(lat: Double, lng: Double): Offset {
-            val x = padding + ((lng - minLng) / lngRange * (w - 2 * padding)).toFloat()
-            val y = padding + ((maxLat - lat) / latRange * (h - 2 * padding)).toFloat()
-            return Offset(x, y)
-        }
-
-        for (i in 1 until coords.size) {
-            val p1 = project(coords[i - 1].first, coords[i - 1].second)
-            val p2 = project(coords[i].first, coords[i].second)
-            drawLine(color = VitalGreen.copy(alpha = 0.9f), start = p1, end = p2, strokeWidth = 3.5f, cap = StrokeCap.Round)
-        }
-        val start = project(coords.first().first, coords.first().second)
-        drawCircle(Color(0xFF2196F3), radius = 7f, center = start)
-        drawCircle(Color(0xFF111111), radius = 3.5f, center = start)
-        val end = project(coords.last().first, coords.last().second)
-        drawCircle(VitalOrange, radius = 7f, center = end)
-        drawCircle(Color(0xFF111111), radius = 3.5f, center = end)
-    }
+            .height(240.dp)
+            .clip(RoundedCornerShape(10.dp))
+    )
 }
+
+private fun activityDetailTileSource(): OnlineTileSourceBase =
+    object : OnlineTileSourceBase(
+        "CartoVoyager", 1, 19, 256, ".png",
+        arrayOf(
+            "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://c.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://d.basemaps.cartocdn.com/rastertiles/voyager/"
+        )
+    ) {
+        override fun getTileURLString(pMapTileIndex: Long): String =
+            baseUrl +
+            MapTileIndex.getZoom(pMapTileIndex) + "/" +
+            MapTileIndex.getX(pMapTileIndex)    + "/" +
+            MapTileIndex.getY(pMapTileIndex)    + mImageFilenameEnding
+    }

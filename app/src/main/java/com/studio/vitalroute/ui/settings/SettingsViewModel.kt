@@ -21,11 +21,9 @@ data class SettingsUiState(
     val displayName: String       = "",
     val email: String             = "",
     val weeklyGoalKm: Float       = 50f,
-    // Dados físicos
     val weightKg: Float           = 70f,
     val heightCm: Int             = 170,
     val gender: String            = "male",
-    // Edição de perfil
     val isEditingName: Boolean    = false,
     val editNameValue: String     = "",
     val isEditingWeight: Boolean  = false,
@@ -34,7 +32,6 @@ data class SettingsUiState(
     val editHeightValue: String   = "",
     val isSavingName: Boolean     = false,
     val saveNameError: String?    = null,
-    // Mudança de password
     val isChangingPassword: Boolean      = false,
     val currentPasswordInput: String     = "",
     val newPasswordInput: String         = "",
@@ -42,7 +39,6 @@ data class SettingsUiState(
     val passwordChangeLoading: Boolean   = false,
     val passwordChangeError: String?     = null,
     val passwordChangeSuccess: Boolean   = false,
-    // Mudança de email
     val isChangingEmail: Boolean         = false,
     val newEmailInput: String            = "",
     val emailChangePasswordInput: String = "",
@@ -82,8 +78,6 @@ class SettingsViewModel : ViewModel() {
             } catch (_: Exception) {}
         }
     }
-
-    // perfil
 
     private fun loadProfile() {
         val user = Firebase.auth.currentUser
@@ -143,7 +137,6 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
-    // peso
     fun startEditWeight()  { _uiState.update { it.copy(isEditingWeight = true, editWeightValue = it.weightKg.toInt().toString()) } }
     fun updateEditWeight(v: String) { _uiState.update { it.copy(editWeightValue = v) } }
     fun cancelEditWeight() { _uiState.update { it.copy(isEditingWeight = false) } }
@@ -154,7 +147,6 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch { saveProfile(_uiState.value) }
     }
 
-    // altura
     fun startEditHeight()  { _uiState.update { it.copy(isEditingHeight = true, editHeightValue = it.heightCm.toString()) } }
     fun updateEditHeight(v: String) { _uiState.update { it.copy(editHeightValue = v) } }
     fun cancelEditHeight() { _uiState.update { it.copy(isEditingHeight = false) } }
@@ -165,13 +157,10 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch { saveProfile(_uiState.value) }
     }
 
-    // género
     fun setGender(g: String) {
         _uiState.update { it.copy(gender = g) }
         viewModelScope.launch { saveProfile(_uiState.value) }
     }
-
-    // --- Alterar password ---
 
     fun startChangePassword() {
         _uiState.update {
@@ -215,8 +204,6 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
-    // --- Alterar email ---
-
     fun startChangeEmail() {
         _uiState.update {
             it.copy(isChangingEmail = true, newEmailInput = "", emailChangePasswordInput = "",
@@ -253,8 +240,6 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
-    // --- Helpers ---
-
     private suspend fun reAuthenticate(password: String) {
         val user  = Firebase.auth.currentUser ?: throw Exception("Utilizador não autenticado")
         val email = user.email ?: throw Exception("Email não disponível")
@@ -290,8 +275,6 @@ class SettingsViewModel : ViewModel() {
             )
         } catch (_: Exception) {}
     }
-
-    // preferências
 
     fun toggleMetricSystem(enabled: Boolean) {
         _uiState.update { it.copy(metricSystem = enabled) }

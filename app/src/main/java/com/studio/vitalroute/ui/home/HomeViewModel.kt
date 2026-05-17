@@ -27,7 +27,6 @@ data class HomeUiState(
     val gpsStatus: String = "A verificar...",
     val batteryLevel: String = "—%",
     val isReady: Boolean = true,
-    // Estatísticas semanais (calculadas a partir do Firestore)
     val weeklyKm: String = "0.0",
     val weeklyTime: String = "0 min",
     val weeklyIncidents: String = "0",
@@ -35,7 +34,6 @@ data class HomeUiState(
     val weeklyGoalKm: Float = 100f,
     val distUnit: String = "km",
     val weeklyGoalDisplay: String = "100",
-    // Última atividade
     val lastActivityId: String = "",
     val lastActivityType: String = "",
     val lastActivityDate: String = "",
@@ -96,7 +94,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                             distUnit          = if (useMetric) "km" else "mi"
                         )
                     }
-                    // Reformatar atividades com nova unidade
                     if (cachedActivities.isNotEmpty()) formatActivities(cachedActivities)
                 }
         }
@@ -113,7 +110,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun loadUserName() {
-        // Tenta primeiro o Firestore (fonte primária do nome)
         viewModelScope.launch {
             try {
                 val profile = repository.getUserProfile()

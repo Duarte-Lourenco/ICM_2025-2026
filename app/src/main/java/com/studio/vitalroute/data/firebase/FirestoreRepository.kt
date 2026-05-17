@@ -15,26 +15,20 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
-//
-
 class FirestoreRepository {
 
     private val db   = Firebase.firestore
     private val auth = Firebase.auth
 
-    // ID do utilizador autenticado (lança excepção se não estiver autenticado)
     private val uid: String
         get() = auth.currentUser?.uid
             ?: error("Utilizador não autenticado")
 
-    // Referências de coleção
     private fun activitiesRef()  = db.collection("users").document(uid).collection("activities")
     private fun contactsRef()    = db.collection("users").document(uid).collection("contacts")
     private fun settingsRef()    = db.collection("users").document(uid).collection("settings")
     private fun userRef()        = db.collection("users").document(uid)
     private fun safeZonesRef()   = db.collection("users").document(uid).collection("safeZones")
-
-    // perfil do utilizador
 
     suspend fun saveUserProfile(profile: UserProfile) {
         userRef().set(profile).await()
@@ -43,21 +37,12 @@ class FirestoreRepository {
     suspend fun getUserProfile(): UserProfile? =
         userRef().get().await().toObject<UserProfile>()
 
-    // atividades
-
-    /**
-     * Guarda uma atividade no Firestore e devolve o ID gerado.
-     */
     suspend fun saveActivity(activity: Activity): String {
         val doc = activitiesRef().document()
         doc.set(activity.copy(id = doc.id)).await()
         return doc.id
     }
 
-    /**
-     * Flow em tempo real com todas as atividades, ordenadas por data.
-     * Actualiza automaticamente quando há alterações no Firestore.
-     */
     fun getActivities(): Flow<List<Activity>> = callbackFlow {
         val listener = activitiesRef()
             .orderBy("startTime", Query.Direction.DESCENDING)
@@ -86,8 +71,6 @@ class FirestoreRepository {
         activitiesRef().document(activityId).delete().await()
     }
 
-    // contactos
-
     suspend fun saveContact(contact: FirestoreContact): String {
         val doc = if (contact.id.isEmpty()) contactsRef().document()
                   else contactsRef().document(contact.id)
@@ -111,16 +94,11 @@ class FirestoreRepository {
         contactsRef().document(contactId).delete().await()
     }
 
-    /**
-     * Leitura única (one-shot) de todos os contactos.
-     * Usado pelo SosManager para enviar SMS sem precisar de Flow.
-     */
+    // one-shot para o SosManager nao precisar de flow
     suspend fun getContactsOnce(): List<FirestoreContact> {
         val snapshot = contactsRef().get().await()
         return snapshot.documents.mapNotNull { it.toObject<FirestoreContact>() }
     }
-
-    // zonas seguras
 
     fun getSafeZones(): Flow<List<FirestoreSafeZone>> = callbackFlow {
         val listener = safeZonesRef()
@@ -145,23 +123,15 @@ class FirestoreRepository {
         safeZonesRef().document(zoneId).delete().await()
     }
 
-    /** Leitura única das zonas seguras. Usada pelo RecordingService ao iniciar. */
     suspend fun getSafeZonesOnce(): List<FirestoreSafeZone> {
         val snapshot = safeZonesRef().get().await()
         return snapshot.documents.mapNotNull { it.toObject<FirestoreSafeZone>() }
             .filter { it.lat != 0.0 || it.lng != 0.0 }  // só zonas com coordenadas
     }
 
-    /** Leitura única dos contactos com zonesEnabled=true. */
     suspend fun getZoneContactsOnce(): List<FirestoreContact> =
         getContactsOnce().filter { it.zonesEnabled && it.phone.isNotBlank() }
 
-    // localização em tempo real
-
-    /**
-     * Escreve a posição atual do utilizador no Firestore para partilha em tempo real.
-     * Estrutura: users/{uid}/liveLocation (documento único, sobrescrito a cada atualização)
-     */
     suspend fun updateLiveLocation(lat: Double, lng: Double, speedKmh: Double, distKm: Double) {
         val uid = auth.currentUser?.uid ?: return
         db.collection("users").document(uid)
@@ -176,17 +146,12 @@ class FirestoreRepository {
             )).await()
     }
 
-    /**
-     * Marca a partilha de localização como inativa quando a gravação termina.
-     */
     suspend fun stopLiveLocation() {
         val uid = auth.currentUser?.uid ?: return
         db.collection("users").document(uid)
             .collection("liveLocation").document("current")
             .update("isSharing", false).await()
     }
-
-    // definições
 
     suspend fun saveSettings(settings: UserSettings) {
         settingsRef().document("main").set(settings).await()
