@@ -132,7 +132,7 @@ fun DiaryScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        MonthStat("🚴", "${s.totalKm} km", "Distância")
+                        MonthStat("🚴", "${s.totalKm} ${uiState.distUnit}", "Distância")
                         VerticalDivider(modifier = Modifier.height(52.dp), color = Color(0xFF2A2A2A))
                         MonthStat("⛰️", "${s.totalElevation} m", "Elevação")
                     }

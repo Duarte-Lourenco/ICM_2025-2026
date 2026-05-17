@@ -31,8 +31,10 @@ data class HomeUiState(
     val weeklyKm: String = "0.0",
     val weeklyTime: String = "0 min",
     val weeklyIncidents: String = "0",
-    val weeklyGoalProgress: Float = 0f,  // 0..1
+    val weeklyGoalProgress: Float = 0f,
     val weeklyGoalKm: Float = 100f,
+    val distUnit: String = "km",
+    val weeklyGoalDisplay: String = "100",
     // Última atividade
     val lastActivityId: String = "",
     val lastActivityType: String = "",
@@ -76,17 +78,26 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var useMetric = true
+    private var cachedActivities: List<Activity> = emptyList()
+
     private fun loadSettings() {
         viewModelScope.launch {
             repository.getSettingsFlow()
                 .catch { }
                 .collect { settings ->
+                    useMetric = settings.metricSystem
+                    val goalDisplay = if (useMetric) settings.weeklyGoalKm
+                                     else settings.weeklyGoalKm * 0.621371f
                     _uiState.update { s ->
                         s.copy(
-                            weeklyGoalKm       = settings.weeklyGoalKm,
-                            weeklyGoalProgress = (s.weeklyKm.toFloatOrNull() ?: 0f) / settings.weeklyGoalKm
+                            weeklyGoalKm      = settings.weeklyGoalKm,
+                            weeklyGoalDisplay = "%.0f".format(goalDisplay),
+                            distUnit          = if (useMetric) "km" else "mi"
                         )
                     }
+                    // Reformatar atividades com nova unidade
+                    if (cachedActivities.isNotEmpty()) formatActivities(cachedActivities)
                 }
         }
     }
@@ -123,26 +134,41 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadActivities() {
         viewModelScope.launch {
             repository.getActivities()
-                .catch { /* sem autenticação ou erro de rede */ }
+                .catch { }
                 .collect { activities ->
-                    val weeklyStats = computeWeeklyStats(activities)
-                    val last = activities.firstOrNull()
-
-                    _uiState.update { state ->
-                        state.copy(
-                            weeklyKm       = "%.1f".format(weeklyStats.first),
-                            weeklyTime     = "${weeklyStats.second} min",
-                            weeklyGoalProgress = (weeklyStats.first.toFloat() / state.weeklyGoalKm).coerceIn(0f, 1f),
-                            lastActivityId     = last?.id ?: "",
-                            lastActivityType  = last?.type ?: "",
-                            lastActivityDate  = last?.let { formatDate(it.startTime) } ?: "",
-                            lastActivityDist  = last?.let { "%.1f km".format(it.distanceKm) } ?: "—",
-                            lastActivityTime  = last?.let { "${it.durationSeconds / 60} min" } ?: "—",
-                            lastActivitySpeed = last?.let { "%.1f km/h".format(it.avgSpeedKmh) } ?: "—",
-                            lastActivityElev  = last?.let { "${it.elevationM} m" } ?: "—"
-                        )
-                    }
+                    cachedActivities = activities
+                    formatActivities(activities)
                 }
+        }
+    }
+
+    private fun formatActivities(activities: List<Activity>) {
+        val weeklyStats = computeWeeklyStats(activities)
+        val last = activities.firstOrNull()
+        val metric = useMetric
+
+        _uiState.update { state ->
+            val weeklyDist  = if (metric) weeklyStats.first else weeklyStats.first * 0.621371
+            val goalDisplay = state.weeklyGoalDisplay.toFloatOrNull()
+                ?: if (metric) state.weeklyGoalKm else state.weeklyGoalKm * 0.621371f
+            state.copy(
+                weeklyKm           = "%.1f".format(weeklyDist),
+                weeklyTime         = "${weeklyStats.second} min",
+                weeklyGoalProgress = (weeklyDist.toFloat() / goalDisplay.coerceAtLeast(1f)).coerceIn(0f, 1f),
+                lastActivityId     = last?.id ?: "",
+                lastActivityType   = last?.type ?: "",
+                lastActivityDate   = last?.let { formatDate(it.startTime) } ?: "",
+                lastActivityDist   = last?.let {
+                    val d = if (metric) it.distanceKm else it.distanceKm * 0.621371
+                    "%.1f ${if (metric) "km" else "mi"}".format(d)
+                } ?: "—",
+                lastActivityTime   = last?.let { "${it.durationSeconds / 60} min" } ?: "—",
+                lastActivitySpeed  = last?.let {
+                    val sp = if (metric) it.avgSpeedKmh else it.avgSpeedKmh * 0.621371
+                    "%.1f ${if (metric) "km/h" else "mph"}".format(sp)
+                } ?: "—",
+                lastActivityElev   = last?.let { "${it.elevationM} m" } ?: "—"
+            )
         }
     }
 

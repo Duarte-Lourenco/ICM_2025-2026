@@ -121,7 +121,7 @@ fun HomeScreen(navController: NavHostController, viewModel: HomeViewModel = view
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    WeekStat("🚴", uiState.weeklyKm, "km")
+                    WeekStat("🚴", uiState.weeklyKm, uiState.distUnit)
                     VerticalDivider(modifier = Modifier.height(44.dp), color = Color(0xFF2A2A2A))
                     WeekStat("⏱️", uiState.weeklyTime, "ativo")
                     VerticalDivider(modifier = Modifier.height(44.dp), color = Color(0xFF2A2A2A))
@@ -134,7 +134,7 @@ fun HomeScreen(navController: NavHostController, viewModel: HomeViewModel = view
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text("Objetivo semanal", color = Color.Gray, fontSize = 11.sp)
-                    Text("${uiState.weeklyKm} / ${uiState.weeklyGoalKm.toInt()} km", color = Color.Gray, fontSize = 11.sp)
+                    Text("${uiState.weeklyKm} / ${uiState.weeklyGoalDisplay} ${uiState.distUnit}", color = Color.Gray, fontSize = 11.sp)
                 }
                 Spacer(Modifier.height(6.dp))
                 LinearProgressIndicator(

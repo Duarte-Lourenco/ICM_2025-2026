@@ -52,7 +52,8 @@ data class DiaryUiState(
     val activities: List<ActivityUiItem> = emptyList(),
     val monthlySummary: MonthlySummary   = MonthlySummary(),
     val personalBests: PersonalBests     = PersonalBests(),
-    val showExportMenu: Boolean          = false
+    val showExportMenu: Boolean          = false,
+    val distUnit: String                 = "km"
 )
 
 
@@ -63,11 +64,32 @@ class DiaryViewModel : ViewModel() {
 
     private val repository = FirestoreRepository()
 
-    // Lista raw para exportação (Activity original, não o UiItem)
     private var rawActivities: List<Activity> = emptyList()
+    private var useMetric = true
 
     init {
+        loadSettings()
         loadActivities()
+    }
+
+    private fun loadSettings() {
+        viewModelScope.launch {
+            repository.getSettingsFlow()
+                .catch { }
+                .collect { settings ->
+                    useMetric = settings.metricSystem
+                    _uiState.update { it.copy(distUnit = if (useMetric) "km" else "mi") }
+                    if (rawActivities.isNotEmpty()) {
+                        _uiState.update {
+                            it.copy(
+                                activities     = rawActivities.map { a -> a.toUiItem() },
+                                monthlySummary = computeMonthlySummary(rawActivities),
+                                personalBests  = computePersonalBests(rawActivities)
+                            )
+                        }
+                    }
+                }
+        }
     }
 
     fun getRawActivities(): List<Activity> = rawActivities
@@ -106,14 +128,17 @@ class DiaryViewModel : ViewModel() {
             in 12..17 -> "Tarde"
             else      -> "Noite"
         }
+        val metric = useMetric
+        val dist  = if (metric) distanceKm  else distanceKm  * 0.621371
+        val speed = if (metric) avgSpeedKmh else avgSpeedKmh * 0.621371
         return ActivityUiItem(
             id              = id,
             type            = type,
             dateLabel       = dateStr,
             timeLabel       = "$period · $durationMin min",
-            distance        = "%.1f km".format(distanceKm),
+            distance        = "%.1f ${if (metric) "km" else "mi"}".format(dist),
             duration        = "$durationMin min",
-            speed           = "%.1f km/h".format(avgSpeedKmh),
+            speed           = "%.1f ${if (metric) "km/h" else "mph"}".format(speed),
             elevation       = "$elevationM m",
             elevationM      = elevationM,
             elevationPoints = elevationPoints,
@@ -133,8 +158,10 @@ class DiaryViewModel : ViewModel() {
             c.get(Calendar.MONTH) == currentMonth && c.get(Calendar.YEAR) == currentYear
         }
 
+        val totalDistKm = thisMonth.sumOf { it.distanceKm }
+        val totalDist   = if (useMetric) totalDistKm else totalDistKm * 0.621371
         return MonthlySummary(
-            totalKm        = "%.1f".format(thisMonth.sumOf { it.distanceKm }),
+            totalKm        = "%.1f".format(totalDist),
             totalElevation = "${thisMonth.sumOf { it.elevationM }}",
             totalMinutes   = "${thisMonth.sumOf { it.durationSeconds } / 60}",
             incidents      = "0"
@@ -145,9 +172,12 @@ class DiaryViewModel : ViewModel() {
 
     private fun computePersonalBests(activities: List<Activity>): PersonalBests {
         if (activities.isEmpty()) return PersonalBests()
+        val metric = useMetric
+        val maxDist  = activities.maxOf { it.distanceKm }
+        val maxSpeed = activities.maxOf { it.avgSpeedKmh }
         return PersonalBests(
-            longestRide     = "%.1f km".format(activities.maxOf { it.distanceKm }),
-            topSpeed        = "%.1f km/h".format(activities.maxOf { it.avgSpeedKmh }),
+            longestRide     = "%.1f ${if (metric) "km" else "mi"}".format(if (metric) maxDist  else maxDist  * 0.621371),
+            topSpeed        = "%.1f ${if (metric) "km/h" else "mph"}".format(if (metric) maxSpeed else maxSpeed * 0.621371),
             longestDuration = "${activities.maxOf { it.durationSeconds } / 60} min",
             mostElevation   = "${activities.maxOf { it.elevationM }} m"
         )

@@ -31,6 +31,8 @@ data class RecordingUiState(
     val elapsedTime: String       = "00:00:00",
     val distance: String          = "0.00",
     val speed: String             = "0.0",
+    val distUnit: String          = "km",
+    val speedUnit: String         = "km/h",
     val elevation: String         = "0",
     val calories: String          = "0",
     val activityType: ActivityType = ActivityType.CYCLING,
@@ -65,17 +67,23 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private var routeDeviationEnabled  = false
     private var arrivalAlertEnabled    = false
     private var userWeightKg           = 70f
+    private var useMetric              = true
 
     init {
         // Observa o estado do serviço em tempo real
         viewModelScope.launch {
             RecordingService.state.collect { s ->
+                val metric = useMetric
                 _uiState.update {
                     it.copy(
                         isRecording           = s.isRecording,
                         elapsedTime           = formatTime(s.elapsedSeconds),
-                        distance              = "%.2f".format(s.distanceKm),
-                        speed                 = "%.1f".format(s.speedKmh),
+                        distance              = if (metric) "%.2f".format(s.distanceKm)
+                                               else "%.2f".format(s.distanceKm * 0.621371),
+                        speed                 = if (metric) "%.1f".format(s.speedKmh)
+                                               else "%.1f".format(s.speedKmh * 0.621371),
+                        distUnit              = if (metric) "km" else "mi",
+                        speedUnit             = if (metric) "km/h" else "mph",
                         elevation             = s.elevationM.toString(),
                         calories              = s.calories.toString(),
                         isSosCountdown        = s.isSosCountdown,
@@ -102,6 +110,8 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 sosDelaySecs          = settings.sosCountdownSecs
                 routeDeviationEnabled = settings.routeDeviationEnabled
                 arrivalAlertEnabled   = settings.arrivalAlertEnabled
+                useMetric             = settings.metricSystem
+                _uiState.update { it.copy(distUnit = if (useMetric) "km" else "mi", speedUnit = if (useMetric) "km/h" else "mph") }
             } catch (_: Exception) {}
         }
         viewModelScope.launch {

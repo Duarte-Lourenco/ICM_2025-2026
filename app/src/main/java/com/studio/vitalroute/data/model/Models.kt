@@ -46,7 +46,8 @@ data class UserSettings(
     val immobilityMinutes: Int     = 5,
     val arrivalAlertEnabled: Boolean = true,
     val routeDeviationEnabled: Boolean = false,
-    val weeklyGoalKm: Float        = 50f   // objetivo semanal em km
+    val weeklyGoalKm: Float        = 50f,
+    val metricSystem: Boolean      = true
 )
 
 /**

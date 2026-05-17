@@ -137,14 +137,14 @@ fun ActivityDetailScreen(
                 }
             }
             else -> {
-                ActivityDetailContent(activity = uiState.activity!!)
+                ActivityDetailContent(activity = uiState.activity!!, useMetric = uiState.useMetric)
             }
         }
     }
 }
 
 @Composable
-private fun ActivityDetailContent(activity: Activity) {
+private fun ActivityDetailContent(activity: Activity, useMetric: Boolean) {
     val dateFmt = SimpleDateFormat("d MMMM yyyy", Locale("pt", "PT"))
     val timeFmt = SimpleDateFormat("HH:mm", Locale("pt", "PT"))
     val dateStr = dateFmt.format(Date(activity.startTime))
@@ -162,9 +162,15 @@ private fun ActivityDetailContent(activity: Activity) {
         else      -> Icons.Default.DirectionsBike
     }
 
+    val distDisplay  = if (useMetric) activity.distanceKm  else activity.distanceKm  * 0.621371
+    val distUnit     = if (useMetric) "km" else "mi"
+    val speedUnit    = if (useMetric) "km/h" else "mph"
+    val avgSpeed     = if (useMetric) activity.avgSpeedKmh else activity.avgSpeedKmh * 0.621371
+    val maxSpeed     = if (useMetric) activity.maxSpeedKmh else activity.maxSpeedKmh * 0.621371
+
     val paceStr = if (activity.distanceKm > 0.0) {
-        val secsPerKm = activity.durationSeconds / activity.distanceKm
-        "%d:%02d /km".format(secsPerKm.toInt() / 60, secsPerKm.toInt() % 60)
+        val secsPerUnit = activity.durationSeconds / distDisplay
+        "%d:%02d /$distUnit".format(secsPerUnit.toInt() / 60, secsPerUnit.toInt() % 60)
     } else "—"
 
     Column(
@@ -203,13 +209,13 @@ private fun ActivityDetailContent(activity: Activity) {
 
                 // distância — destaque principal como o Strava
                 Text(
-                    text = "%.2f".format(activity.distanceKm),
+                    text = "%.2f".format(distDisplay),
                     color = Color.White,
                     fontSize = 56.sp,
                     fontWeight = FontWeight.ExtraBold,
                     lineHeight = 56.sp
                 )
-                Text("km", color = Color.Gray, fontSize = 14.sp)
+                Text(distUnit, color = Color.Gray, fontSize = 14.sp)
             }
         }
 
@@ -245,12 +251,12 @@ private fun ActivityDetailContent(activity: Activity) {
                 ) {
                     DetailStat(
                         label = "Vel. Média",
-                        value = "%.1f km/h".format(activity.avgSpeedKmh)
+                        value = "%.1f $speedUnit".format(avgSpeed)
                     )
                     VerticalDivider(modifier = Modifier.height(44.dp), color = Color(0xFF2A2A2A))
                     DetailStat(
                         label = "Vel. Máxima",
-                        value = if (activity.maxSpeedKmh > 0.0) "%.1f km/h".format(activity.maxSpeedKmh) else "—",
+                        value = if (activity.maxSpeedKmh > 0.0) "%.1f $speedUnit".format(maxSpeed) else "—",
                         accent = NeonOrange
                     )
                 }

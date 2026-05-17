@@ -256,7 +256,7 @@ fun RecordingScreen(
                     icon = Icons.Default.Straighten,
                     label = "DISTÂNCIA",
                     value = uiState.distance,
-                    unit = "km",
+                    unit = uiState.distUnit,
                     accentColor = Color.White
                 )
                 MetricCard(
@@ -264,7 +264,7 @@ fun RecordingScreen(
                     icon = Icons.Default.Speed,
                     label = "VELOCIDADE",
                     value = uiState.speed,
-                    unit = "km/h",
+                    unit = uiState.speedUnit,
                     accentColor = VitalGreen
                 )
             }

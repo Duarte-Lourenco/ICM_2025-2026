@@ -18,10 +18,8 @@ import kotlinx.coroutines.tasks.await
 
 data class SettingsUiState(
     val metricSystem: Boolean     = true,
-    val autoPause: Boolean        = true,
     val displayName: String       = "",
     val email: String             = "",
-    val offlineStorage: String    = "A calcular…",
     val weeklyGoalKm: Float       = 50f,
     // Dados físicos
     val weightKg: Float           = 70f,
@@ -70,7 +68,7 @@ class SettingsViewModel : ViewModel() {
             repository.getSettingsFlow()
                 .catch { }
                 .collect { s ->
-                    _uiState.update { it.copy(weeklyGoalKm = s.weeklyGoalKm) }
+                    _uiState.update { it.copy(weeklyGoalKm = s.weeklyGoalKm, metricSystem = s.metricSystem) }
                 }
         }
     }
@@ -295,6 +293,13 @@ class SettingsViewModel : ViewModel() {
 
     // preferências
 
-    fun toggleMetricSystem(enabled: Boolean) { _uiState.update { it.copy(metricSystem = enabled) } }
-    fun toggleAutoPause(enabled: Boolean)    { _uiState.update { it.copy(autoPause = enabled) } }
+    fun toggleMetricSystem(enabled: Boolean) {
+        _uiState.update { it.copy(metricSystem = enabled) }
+        viewModelScope.launch {
+            try {
+                val current = repository.getSettings()
+                repository.saveSettings(current.copy(metricSystem = enabled))
+            } catch (_: Exception) {}
+        }
+    }
 }

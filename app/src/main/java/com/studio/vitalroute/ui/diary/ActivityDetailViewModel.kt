@@ -16,7 +16,8 @@ data class ActivityDetailUiState(
     val activity: Activity? = null,
     val showExportMenu: Boolean = false,
     val showDeleteDialog: Boolean = false,
-    val deleted: Boolean = false
+    val deleted: Boolean = false,
+    val useMetric: Boolean = true
 )
 
 class ActivityDetailViewModel(private val activityId: String) : ViewModel() {
@@ -27,7 +28,17 @@ class ActivityDetailViewModel(private val activityId: String) : ViewModel() {
     private val repository = FirestoreRepository()
 
     init {
+        loadSettings()
         loadActivity()
+    }
+
+    private fun loadSettings() {
+        viewModelScope.launch {
+            try {
+                val settings = repository.getSettings()
+                _uiState.update { it.copy(useMetric = settings.metricSystem) }
+            } catch (_: Exception) {}
+        }
     }
 
     fun showExportMenu()  { _uiState.update { it.copy(showExportMenu = true) } }

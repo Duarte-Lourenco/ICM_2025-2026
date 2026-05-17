@@ -142,11 +142,8 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
             SectionHeader("APP E UNIDADES")
-            SettingsToggle(Icons.Default.Straighten, "Sistema Métrico (km/h)", uiState.metricSystem) {
+            SettingsToggle(Icons.Default.Straighten, if (uiState.metricSystem) "Sistema Métrico (km/h)" else "Sistema Imperial (mph)", uiState.metricSystem) {
                 viewModel.toggleMetricSystem(it)
-            }
-            SettingsToggle(Icons.Default.Timer, "Auto-Pausa", uiState.autoPause) {
-                viewModel.toggleAutoPause(it)
             }
             // Objetivo semanal
             Card(
@@ -189,11 +186,6 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
 
             Spacer(modifier = Modifier.height(24.dp))
-            SectionHeader("MAPAS E DADOS")
-            SettingsItem(Icons.Default.CloudDownload, "Gerir Mapas Offline", uiState.offlineStorage)
-            SettingsItem(Icons.Default.History, "Limpar Histórico de Rotas", "Liberta espaço no dispositivo")
-
-            Spacer(modifier = Modifier.height(24.dp))
             SectionHeader("SENSORES EXTERNOS")
             SettingsItem(
                 icon     = Icons.Default.Bluetooth,
@@ -201,22 +193,6 @@ fun SettingsScreen(
                 sub      = "Deteção de quedas & SOS automático",
                 onClick  = { navController.navigate("bluetooth") }
             )
-
-            Spacer(modifier = Modifier.height(32.dp))
-            Card(
-                colors = CardDefaults.cardColors(VitalOrange.copy(alpha = 0.1f)),
-                modifier = Modifier.fillMaxWidth().border(1.dp, VitalOrange, RoundedCornerShape(12.dp))
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Stars, null, tint = VitalOrange)
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("VITALROUTE PREMIUM", color = Color.White, fontWeight = FontWeight.Bold)
-                        Text("Plano Mensal Ativo", color = Color.Gray, fontSize = 12.sp)
-                    }
-                    Text("GERIR", color = VitalOrange, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                }
-            }
 
             Spacer(modifier = Modifier.height(48.dp))
             Text("Terminar Sessão", color = Color.Red, modifier = Modifier.fillMaxWidth().clickable { onSignOut() }, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
