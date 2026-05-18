@@ -14,8 +14,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.max
 
-// Referência às Activities Firestore (para exportação)
-// O ViewModel mantém a lista raw para passar ao ActivityExporter
+// referencia as activities firestore para exportacao
+// o viewmodel mantem a lista raw para passar ao activityexporter
 
 
 

@@ -56,7 +56,7 @@ fun RecordingScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    // permissão de sms (necessária para sos)
+    // permissao de sms necessaria para sos
     var showSmsRationale by remember { mutableStateOf(false) }
     val smsPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -70,7 +70,7 @@ fun RecordingScreen(
         }
     }
 
-    // permissão de localização
+    // permissao de localizacao
     var showPermissionRationale by remember { mutableStateOf(false) }
     val locationPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -90,7 +90,7 @@ fun RecordingScreen(
         return
     }
 
-    // sos enviado — diálogo de confirmação
+    // sos enviado dialogo de confirmacao
     if (uiState.sosSent) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissSosSent() },
@@ -122,7 +122,7 @@ fun RecordingScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // cabeçalho
+            // cabecalho
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -161,8 +161,7 @@ fun RecordingScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // seletor de tipo de atividade
-            // Só visível quando não está a gravar
+            // seletor de tipo de atividade so visivel quando nao esta a gravar
             if (!uiState.isRecording) {
                 Text(
                     text = "TIPO DE ATIVIDADE",
@@ -208,7 +207,7 @@ fun RecordingScreen(
                 }
                 Spacer(Modifier.height(20.dp))
             } else {
-                // Mostra o tipo atual durante a gravação
+                // mostra o tipo atual durante a gravacao
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -260,7 +259,7 @@ fun RecordingScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // grelha de métricas 2×2
+            // grelha de metricas 2x2
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -307,7 +306,7 @@ fun RecordingScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // card de destino (só quando não está a gravar)
+            // card de destino so quando nao esta a gravar
             if (!uiState.isRecording) {
                 DestinationCard(
                     hasDestination   = uiState.hasDestination,
@@ -318,7 +317,7 @@ fun RecordingScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // mapa em tempo real (visível durante gravação ou quando há destino)
+            // mapa em tempo real visivel durante gravacao ou quando ha destino
             if (uiState.isRecording || uiState.hasDestination) {
                 LiveTrackingMap(
                     currentLat          = uiState.currentLat,
@@ -334,7 +333,7 @@ fun RecordingScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // diálogo: sms negado
+            // dialogo sms negado
             if (showSmsRationale) {
                 AlertDialog(
                     onDismissRequest = { showSmsRationale = false },
@@ -356,7 +355,7 @@ fun RecordingScreen(
                 )
             }
 
-            // diálogo de permissão negada
+            // dialogo de permissao negada
             if (showPermissionRationale) {
                 AlertDialog(
                     onDismissRequest = { showPermissionRationale = false },
@@ -411,7 +410,7 @@ fun RecordingScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // partilha de localização em tempo real
+            // partilha de localizacao em tempo real
             if (!uiState.isRecording) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -456,7 +455,7 @@ fun RecordingScreen(
                 }
                 Spacer(Modifier.height(12.dp))
             } else if (uiState.isLocationSharing) {
-                // Indicador de partilha ativa + botão de copiar link
+                // indicador de partilha ativa botao de copiar link
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF0A1520)),
@@ -493,7 +492,7 @@ fun RecordingScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // botão start / stop
+            // botao start stop
             Button(
                 onClick = {
                     if (uiState.isRecording) {
@@ -527,7 +526,7 @@ fun RecordingScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // info de segurança
+            // info de seguranca
             if (!uiState.isRecording) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -551,7 +550,7 @@ fun RecordingScreen(
                 Spacer(Modifier.height(24.dp))
             }
 
-            // sos slider (manual)
+            // sos slider manual
             SosSlider(onSosTriggered = { viewModel.triggerSos() })
             Spacer(Modifier.height(32.dp))
         }
@@ -605,7 +604,7 @@ fun SosCountdownOverlay(
                 textAlign = TextAlign.Center
             )
 
-            // Contador circular
+            // contador circular
             Box(contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
                     progress = { secondsRemaining / totalSeconds.toFloat() },
@@ -692,7 +691,7 @@ private fun LiveTrackingMap(
                     }
                 },
                 update = { map ->
-                    // Rota planeada (azul) — inserida no início para ficar por baixo
+                    // rota planeada azul inserida no inicio para ficar por baixo
                     map.overlays.removeAll { it is LivePlannedPolyline }
                     if (plannedRoutePoints.size >= 2) {
                         val pts = plannedRoutePoints.mapNotNull { p ->
@@ -713,7 +712,7 @@ private fun LiveTrackingMap(
                         }
                     }
 
-                    // Rota percorrida (verde)
+                    // rota percorrida verde
                     map.overlays.removeAll { it is Polyline && it !is LivePlannedPolyline }
                     val coords = routePoints.mapNotNull { p ->
                         val s = p.split(",")
@@ -732,7 +731,7 @@ private fun LiveTrackingMap(
                         map.overlays.add(poly)
                     }
 
-                    // Marcador de destino
+                    // marcador de destino
                     map.overlays.removeAll { it is LiveDestMarker }
                     if (hasDestination) {
                         val m = LiveDestMarker(map)
@@ -742,7 +741,7 @@ private fun LiveTrackingMap(
                         map.overlays.add(m)
                     }
 
-                    // Centra no destino se ainda não há fix GPS
+                    // centra no destino se ainda nao ha fix gps
                     if (hasDestination && !isRecording && currentLat == 0.0 && currentLng == 0.0) {
                         map.controller.setCenter(GeoPoint(destinationLat, destinationLng))
                     }

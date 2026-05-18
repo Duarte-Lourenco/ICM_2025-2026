@@ -51,7 +51,7 @@ fun DiaryScreen(
             .padding(20.dp)
     ) {
 
-        // cabeçalho
+        // cabecalho
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -67,7 +67,7 @@ fun DiaryScreen(
                 Text(monthLabel, color = Color.Gray, fontSize = 13.sp)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Botão de exportação
+                // botao de exportacao
                 Box {
                     IconButton(onClick = { viewModel.showExportMenu() }) {
                         Icon(Icons.Default.Share, "Exportar", tint = Color.Gray,
@@ -119,7 +119,7 @@ fun DiaryScreen(
             }
         } else {
 
-            // resumo do mês
+            // resumo do mes
             SectionHeader("RESUMO DO MÊS")
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -173,7 +173,7 @@ fun DiaryScreen(
 
             Spacer(Modifier.height(28.dp))
 
-            // histórico de atividades
+            // historico de atividades
             SectionHeader("HISTÓRICO")
 
             if (uiState.activities.isEmpty()) {
@@ -289,7 +289,7 @@ private fun ActivityCard(activity: ActivityUiItem, maxElevationM: Int = 1, onCli
                 ActivityMetric("⛰️", activity.elevation, "Elevação")
             }
 
-            // Gráfico de perfil de elevação (linha real) ou barra relativa de fallback
+            // grafico de perfil de elevacao linha real ou barra relativa de fallback
             if (activity.elevationPoints.size >= 3) {
                 Spacer(Modifier.height(12.dp))
                 ElevationProfileChart(points = activity.elevationPoints)
@@ -298,7 +298,7 @@ private fun ActivityCard(activity: ActivityUiItem, maxElevationM: Int = 1, onCli
                 ElevationBar(elevationM = activity.elevationM, maxElevationM = maxElevationM)
             }
 
-            // Mini-rota (só aparece se houver pelo menos 3 pontos GPS)
+            // mini rota so aparece se houver pelo menos 3 pontos gps
             if (activity.routePoints.size >= 3) {
                 Spacer(Modifier.height(12.dp))
                 MiniRouteMap(points = activity.routePoints)
@@ -307,7 +307,7 @@ private fun ActivityCard(activity: ActivityUiItem, maxElevationM: Int = 1, onCli
     }
 }
 
-// gráfico de linha de elevação real
+// grafico de linha de elevacao real
 
 @Composable
 private fun ElevationProfileChart(points: List<Int>) {
@@ -337,7 +337,7 @@ private fun ElevationProfileChart(points: List<Int>) {
             val h = size.height
             val step = if (points.size > 1) w / (points.size - 1) else w
 
-            // Constrói o path da linha
+            // constroi o path da linha
             val linePath = Path()
             val fillPath = Path()
 
@@ -350,7 +350,7 @@ private fun ElevationProfileChart(points: List<Int>) {
                     fillPath.moveTo(x, h)
                     fillPath.lineTo(x, y)
                 } else {
-                    // Curva suave (bezier cúbico) entre pontos
+                    // curva suave bezier cubico entre pontos
                     val prevX = (i - 1) * step
                     val prevY = h - ((points[i - 1] - minAlt).toFloat() / range) * h
                     val cx = (prevX + x) / 2f
@@ -361,9 +361,9 @@ private fun ElevationProfileChart(points: List<Int>) {
             fillPath.lineTo((points.size - 1) * step, h)
             fillPath.close()
 
-            // Área preenchida
+            // area preenchida
             drawPath(fillPath, color = fillColor)
-            // Linha de contorno
+            // linha de contorno
             drawPath(
                 linePath,
                 color = lineColor,
@@ -373,7 +373,7 @@ private fun ElevationProfileChart(points: List<Int>) {
                     join      = StrokeJoin.Round
                 )
             )
-            // Ponto final (destaque)
+            // ponto final destaque
             val lastX = (points.size - 1) * step
             val lastY = h - ((points.last() - minAlt).toFloat() / range) * h
             drawCircle(lineColor, radius = 4f, center = Offset(lastX, lastY))
@@ -382,7 +382,7 @@ private fun ElevationProfileChart(points: List<Int>) {
     }
 }
 
-// barra de elevação relativa (fallback quando < 3 amostras)
+// barra de elevacao relativa fallback quando menos de 3 amostras
 
 @Composable
 private fun ElevationBar(elevationM: Int, maxElevationM: Int) {
@@ -419,11 +419,11 @@ private fun ElevationBar(elevationM: Int, maxElevationM: Int) {
     }
 }
 
-// mini-mapa da rota percorrida
+// mini mapa da rota percorrida
 
 @Composable
 private fun MiniRouteMap(points: List<String>) {
-    // Parse lat/lng pairs
+    // parse lat lng pairs
     val coords = points.mapNotNull { p ->
         val parts = p.split(",")
         if (parts.size == 2) {
@@ -467,12 +467,12 @@ private fun MiniRouteMap(points: List<String>) {
 
             fun project(lat: Double, lng: Double): Offset {
                 val x = padding + ((lng - minLng) / lngRange * (w - 2 * padding)).toFloat()
-                // Latitude invertida: maior lat = mais acima
+                // latitude invertida maior lat fica acima
                 val y = padding + ((maxLat - lat) / latRange * (h - 2 * padding)).toFloat()
                 return Offset(x, y)
             }
 
-            // Desenha a rota
+            // desenha a rota
             for (i in 1 until coords.size) {
                 val p1 = project(coords[i - 1].first, coords[i - 1].second)
                 val p2 = project(coords[i].first, coords[i].second)
@@ -484,11 +484,11 @@ private fun MiniRouteMap(points: List<String>) {
                     cap         = StrokeCap.Round
                 )
             }
-            // Ponto de partida (azul)
+            // ponto de partida azul
             val start = project(coords.first().first, coords.first().second)
             drawCircle(startColor, radius = 5f, center = start)
             drawCircle(Color(0xFF1A1A1A), radius = 2.5f, center = start)
-            // Ponto de chegada (laranja)
+            // ponto de chegada laranja
             val end = project(coords.last().first, coords.last().second)
             drawCircle(endColor, radius = 5f, center = end)
             drawCircle(Color(0xFF1A1A1A), radius = 2.5f, center = end)

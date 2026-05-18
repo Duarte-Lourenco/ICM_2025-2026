@@ -153,7 +153,7 @@ fun HomeScreen(navController: NavHostController, viewModel: HomeViewModel = view
 
         Spacer(Modifier.height(28.dp))
 
-        // última atividade
+        // ultima atividade
         SectionHeader("ÚLTIMA ATIVIDADE")
         if (uiState.lastActivityDate.isEmpty()) {
             Card(

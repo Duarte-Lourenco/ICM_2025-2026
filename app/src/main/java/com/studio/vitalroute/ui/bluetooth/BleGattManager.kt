@@ -33,15 +33,15 @@ private object BleUuid {
     // acceleration 3d usado por alguns wearables
     val ACCEL_CHAR: UUID = UUID.fromString("00002713-0000-1000-8000-00805f9b34fb")
 
-    // Protocolo VitalRoute custom (para dispositivos VitalBand nativos)
+    // protocolo vitalroute custom para dispositivos vitalband nativos
     val VITALROUTE_SERVICE: UUID = UUID.fromString("0000ff00-0000-1000-8000-00805f9b34fb")
     val VITALROUTE_FALL_CHAR: UUID = UUID.fromString("0000ff01-0000-1000-8000-00805f9b34fb")
     val VITALROUTE_ACCEL_CHAR: UUID = UUID.fromString("0000ff02-0000-1000-8000-00805f9b34fb")
 
-    // Polar H10 / TICKR — serviço de frequência cardíaca (para confirmar que está conectado)
+    // polar h10 tickr servico de frequencia cardiaca
     val HEART_RATE_SERVICE: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
 
-    // Qualquer serviço desconhecido — subscreve todas as características notificáveis
+    // qualquer servico desconhecido subscreve todas as caracteristicas notificaveis
 }
 
 
@@ -65,16 +65,16 @@ class BleGattManager(
     private var gatt: BluetoothGatt? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    // Fila de operações GATT (só uma por vez é permitida)
+    // fila de operacoes gatt so uma por vez
     private val opQueue = LinkedList<() -> Unit>()
     private var opInProgress = false
 
-    // Algoritmo de queda
+    // algoritmo de queda
     private var fallPhase    = FallPhase.NONE
     private var lastFallTime = 0L
     var sensitivity          = 0.6f
 
-    // Simulação (quando o device address começa por "AA:BB:CC" = simulado)
+    // simulacao quando o device address comeca por aabbcc
     private var simJob: Job? = null
 
     // ligar
@@ -83,7 +83,7 @@ class BleGattManager(
         onStatusChanged(GattConnectionStatus.CONNECTING, "A ligar a ${device.name ?: device.address}…")
 
         if (device.address.startsWith("AA:BB:CC")) {
-            // Dispositivo simulado — não faz GATT real
+            // dispositivo simulado nao faz gatt real
             startSimulation(device.name ?: "Dispositivo")
             return
         }
@@ -148,19 +148,19 @@ class BleGattManager(
 
             val chars = mutableListOf<BluetoothGattCharacteristic>()
 
-            // Prioridade 1: serviço VitalRoute custom
+            // prioridade 1 servico vitalroute custom
             gatt.getService(BleUuid.VITALROUTE_SERVICE)?.let { svc ->
                 svc.getCharacteristic(BleUuid.VITALROUTE_FALL_CHAR)?.let  { chars += it }
                 svc.getCharacteristic(BleUuid.VITALROUTE_ACCEL_CHAR)?.let { chars += it }
             }
 
-            // Prioridade 2: Environmental Sensing (Free Fall standard)
+            // prioridade 2 environmental sensing free fall standard
             gatt.getService(BleUuid.ENV_SENSING_SERVICE)?.let { svc ->
                 svc.getCharacteristic(BleUuid.FREE_FALL_CHAR)?.let { chars += it }
                 svc.getCharacteristic(BleUuid.ACCEL_CHAR)?.let    { chars += it }
             }
 
-            // Prioridade 3: todas as características notificáveis de qualquer serviço
+            // prioridade 3 todas as caracteristicas notificaveis de qualquer servico
             if (chars.isEmpty()) {
                 gatt.services.forEach { svc ->
                     svc.characteristics.forEach { char ->
@@ -173,14 +173,14 @@ class BleGattManager(
             }
 
             if (chars.isEmpty()) {
-                // Ligado mas sem características úteis — continua funcional (ex.: Polar H10 HR)
+                // ligado mas sem caracteristicas uteis continua funcional ex polar h10 hr
                 onStatusChanged(GattConnectionStatus.CONNECTED, "Ligado (sem dados de queda disponíveis)")
                 return
             }
 
             onStatusChanged(GattConnectionStatus.SUBSCRIBING, "A ativar notificações (${chars.size} características)…")
 
-            // Encadeia as subscrições em fila — GATT só permite uma operação de cada vez
+            // encadeia subscricoes em fila gatt so permite uma operacao de cada vez
             chars.forEach { char -> enqueue { enableNotifications(gatt, char) } }
             nextOp()
         }
@@ -193,7 +193,7 @@ class BleGattManager(
             processCharacteristicData(characteristic.uuid, characteristic.value ?: return)
         }
 
-        // API 33+
+        // api 33 ou superior
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -208,7 +208,7 @@ class BleGattManager(
             status: Int
         ) {
             opInProgress = false
-            // Quando todas as subscrições estiverem completas, anuncia que está pronto
+            // quando todas as subscricoes estiverem completas anuncia que esta pronto
             if (opQueue.isEmpty()) {
                 onStatusChanged(GattConnectionStatus.CONNECTED, "Ligado e a monitorizar quedas")
             }
@@ -255,27 +255,27 @@ class BleGattManager(
 
     private fun processCharacteristicData(uuid: UUID, value: ByteArray) {
         when {
-            // Queda direta (VitalRoute custom ou Free Fall standard): byte != 0 = queda
+            // queda direta vitalroute custom ou free fall standard byte diferente de 0 e queda
             uuid == BleUuid.VITALROUTE_FALL_CHAR || uuid == BleUuid.FREE_FALL_CHAR -> {
                 if (value.isNotEmpty() && value[0].toInt() != 0) {
                     triggerFall()
                 }
             }
-            // Dados de acelerómetro: 6 bytes = 3 × Int16 (x, y, z em m/s² × 100)
+            // dados de acelerometro 6 bytes 3 int16 x y z em m s2 vezes 100
             (uuid == BleUuid.VITALROUTE_ACCEL_CHAR || uuid == BleUuid.ACCEL_CHAR) && value.size >= 6 -> {
                 val x = value.toInt16(0) / 100f
                 val y = value.toInt16(2) / 100f
                 val z = value.toInt16(4) / 100f
                 processAcceleration(x, y, z)
             }
-            // Dados genéricos com 6 bytes — tenta interpretar como acelerómetro
+            // dados genericos com 6 bytes tenta interpretar como acelerometro
             value.size == 6 || value.size == 7 -> {
                 try {
                     val x = value.toInt16(0) / 100f
                     val y = value.toInt16(2) / 100f
                     val z = value.toInt16(4) / 100f
                     val mag = sqrt(x * x + y * y + z * z)
-                    // Só processa se parecer acelerómetro real (magnitude entre 0 e 50 m/s²)
+                    // so processa se parecer acelerometro real magnitude entre 0 e 50 m s2
                     if (mag in 0f..50f) processAcceleration(x, y, z)
                 } catch (_: Exception) {}
             }
@@ -326,19 +326,19 @@ class BleGattManager(
                 delay(50L)  // ~20 Hz
                 t++
 
-                // Simula queda ao fim de 8 segundos (t = 160 amostras × 50ms)
+                // simula queda ao fim de 8 segundos t igual a 160 amostras vezes 50ms
                 val x: Float
                 val y: Float
                 val z: Float
 
                 if (t in 160..164) {
-                    // Fase queda livre (magnitude ~1 m/s²)
+                    // fase queda livre magnitude aproximadamente 1 m s2
                     x = 0.2f; y = 0.8f; z = 0.3f
                 } else if (t in 165..167) {
-                    // Fase impacto (magnitude ~35 m/s²)
+                    // fase impacto magnitude aproximadamente 35 m s2
                     x = 20f; y = 25f; z = 15f
                 } else {
-                    // Movimento normal em ciclismo/caminhada
+                    // movimento normal em ciclismo ou caminhada
                     val noise = (Math.random() * 2 - 1).toFloat() * 0.5f
                     x = 1.0f + noise
                     y = (9.8f + noise)  // gravidade dominante em Y

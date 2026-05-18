@@ -65,7 +65,7 @@ import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
 
-// Cores por tipo de infraestrutura ciclável
+// cores por tipo de infraestrutura ciclavel
 private val COLOR_CYCLEWAY = android.graphics.Color.parseColor("#00C853") // verde vivo
 private val COLOR_PATH     = android.graphics.Color.parseColor("#29B6F6") // azul claro
 private val COLOR_TRACK    = android.graphics.Color.parseColor("#FFA726") // laranja
@@ -82,14 +82,14 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
     val mapViewRef      = remember { mutableStateOf<MapView?>(null) }
     val markerIconCache = remember { mutableMapOf<String, BitmapDrawable>() }
 
-    // Carrega tudo ao abrir o ecrã
+    // carrega tudo ao abrir o ecra
     LaunchedEffect(Unit) {
         viewModel.updateCenter(userLocation.latitude, userLocation.longitude)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // ── Mapa osmdroid ──────────────────────────────────────────────────
+        // mapa osmdroid
         AndroidView(
             factory = { ctx ->
                 Configuration.getInstance().apply {
@@ -111,7 +111,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                     locationOverlay.enableMyLocation()
                     overlays.add(locationOverlay)
 
-                    // Overlay de eventos de toque (para criar zonas)
+                    // overlay de eventos de toque para criar zonas
                     overlays.add(object : Overlay() {
                         override fun onSingleTapConfirmed(e: MotionEvent, mapView: MapView): Boolean {
                             val pt = mapView.projection.fromPixels(e.x.toInt(), e.y.toInt())
@@ -124,10 +124,10 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                 }
             },
             update = { map ->
-                // tile source — sempre CartoDB Voyager (limpo e minimalista)
+                // tile source sempre cartodb voyager
                 map.setTileSource(cartoDarkTileSource())
 
-                // ciclovias — só visíveis na camada de ciclismo
+                // ciclovias so visiveis na camada de ciclismo
                 map.overlays.removeAll { it is Polyline }
                 if (uiState.selectedLayer == MapLayer.CYCLING) {
                     uiState.cyclingPaths.forEach { path ->
@@ -148,7 +148,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                     }
                 }
 
-                // marcador de destino
+                // marcador destino
                 map.overlays.removeAll { it is DestinationMarker }
                 uiState.activeDestination?.let { dest ->
                     val icon = createDestinationMarkerIcon(context)
@@ -161,13 +161,13 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                     map.overlays.add(marker)
                 }
 
-                // zonas seguras — círculos e marcadores (sempre visíveis)
+                // zonas seguras circulos e marcadores sempre visiveis
                 map.overlays.removeAll { it is ZoneCircle || it is ZoneMarker }
                 uiState.safeZones.forEach { zone ->
                     if (zone.lat == 0.0 && zone.lng == 0.0) return@forEach
                     val center = GeoPoint(zone.lat, zone.lng)
 
-                    // Círculo de raio — cor da zona com transparência
+                    // circulo de raio cor da zona com transparencia
                     val zoneArgb = try { android.graphics.Color.parseColor(zone.color) }
                                    catch (_: Exception) { android.graphics.Color.parseColor("#FF6F00") }
                     val circle = ZoneCircle().apply {
@@ -181,7 +181,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                     }
                     map.overlays.add(circle)
 
-                    // Marcador central com ícone de casa na cor da zona
+                    // marcador central com icone de casa na cor da zona
                     val icon = markerIconCache.getOrPut(zone.color) { createHouseMarkerIcon(context, zone.color) }
                     val marker = ZoneMarker(map).apply {
                         position = center
@@ -201,7 +201,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // ── Barra superior + banner (Column para evitar sobreposição) ─────────
+        // barra superior e banner
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -229,7 +229,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                     )
                 }
             }
-            // Banner "destino ativo"
+            // banner destino ativo
             if (uiState.activeDestination != null && !uiState.isAddingZone) {
                 Spacer(Modifier.height(8.dp))
                 Surface(
@@ -261,7 +261,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                 }
             }
 
-            // Banner "adicionar zona" — logo abaixo da barra de topo, sem sobreposição
+            // banner adicionar zona logo abaixo da barra de topo
             if (uiState.isAddingZone) {
                 Spacer(Modifier.height(8.dp))
                 Surface(
@@ -291,7 +291,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             }
         }
 
-        // ── Painel inferior — ciclovias (só visível no modo ciclismo) ─────────
+        // painel inferior ciclovias so visivel no modo ciclismo
         AnimatedVisibility(
             visible  = uiState.selectedLayer == MapLayer.CYCLING && uiState.selectedZone == null,
             modifier = Modifier
@@ -308,7 +308,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             )
         }
 
-        // ── FABs — acima do painel de ciclovias quando visível ──────────────
+        // fabs acima do painel de ciclovias quando visivel
         val fabBottomPadding by animateDpAsState(
             targetValue = if (uiState.selectedLayer == MapLayer.CYCLING) 130.dp else 16.dp,
             label       = "fabBottom"
@@ -345,7 +345,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             }
         }
 
-        // ── Bottom sheet de destino (slide-up) ──────────────────────────────
+        // bottom sheet de destino slide-up
         AnimatedVisibility(
             visible  = uiState.showDestinationSheet,
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -358,7 +358,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             )
         }
 
-        // ── Painel de edição de zona (slide-up) ─────────────────────────────
+        // painel de edicao de zona slide-up
         AnimatedVisibility(
             visible  = uiState.selectedZone != null && !uiState.showDestinationSheet,
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -382,7 +382,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             }
         }
 
-        // ── Diálogo de nome da zona ─────────────────────────────────────────
+        // dialogo de nome da zona
         if (uiState.showZoneNameDialog) {
             ZoneNameDialog(
                 name         = uiState.pendingZoneName,
@@ -397,7 +397,7 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
     }
 }
 
-// ── Componentes ────────────────────────────────────────────────────────────────
+// componentes
 
 @Composable
 private fun LayerToggle(selected: MapLayer, onSelect: (MapLayer) -> Unit) {
@@ -520,7 +520,7 @@ private fun CyclingInfoPanel(
                     }
                 }
 
-                // botão de refresh
+                // botao de refresh
                 IconButton(
                     onClick  = onRefresh,
                     modifier = Modifier.size(32.dp)
@@ -538,7 +538,7 @@ private fun CyclingInfoPanel(
             HorizontalDivider(color = Color(0xFF2A2A2A))
             Spacer(Modifier.height(10.dp))
 
-            // Seletor de raio
+            // seletor de raio
             Row(
                 modifier              = Modifier.fillMaxWidth(),
                 verticalAlignment     = Alignment.CenterVertically,
@@ -612,7 +612,7 @@ private fun RadiusChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-// ── Painel de edição de zona segura ────────────────────────────────────────────
+// painel de edicao de zona segura
 
 private val ZONE_COLORS = listOf(
     "#FF6F00", "#4CAF50", "#2196F3", "#F44336", "#9C27B0", "#00BCD4"
@@ -642,7 +642,7 @@ private fun ZoneDetailSheet(
     ) {
         Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
 
-            // Barra de arrasto + fechar
+            // barra de arrasto e fechar
             Row(
                 modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -661,7 +661,7 @@ private fun ZoneDetailSheet(
 
             Spacer(Modifier.height(12.dp))
 
-            // Nome da zona com ícone colorido
+            // nome da zona com icone colorido
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(
                     modifier         = Modifier.size(36.dp).clip(CircleShape)
@@ -681,7 +681,7 @@ private fun ZoneDetailSheet(
             HorizontalDivider(color = Color(0xFF2A2A2A))
             Spacer(Modifier.height(16.dp))
 
-            // Cor do ícone
+            // cor do icone
             Text("Cor do ícone", color = Color.Gray, fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -700,7 +700,7 @@ private fun ZoneDetailSheet(
 
             Spacer(Modifier.height(20.dp))
 
-            // Raio de deteção
+            // raio de detecao
             Row(
                 modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -727,7 +727,7 @@ private fun ZoneDetailSheet(
 
             Spacer(Modifier.height(8.dp))
 
-            // Botão "Definir como destino"
+            // botao definir como destino
             TextButton(
                 onClick  = onSetAsDestination,
                 modifier = Modifier.fillMaxWidth()
@@ -739,7 +739,7 @@ private fun ZoneDetailSheet(
 
             Spacer(Modifier.height(8.dp))
 
-            // Confirmação de eliminação ou botões normais
+            // confirmacao de eliminacao ou botoes normais
             if (showDeleteConfirm) {
                 Surface(color = Color(0xFF2A0000), shape = RoundedCornerShape(12.dp)) {
                     Row(
@@ -787,7 +787,7 @@ private fun ZoneDetailSheet(
     }
 }
 
-// ── Diálogo de nome da zona segura ─────────────────────────────────────────────
+// dialogo de nome da zona segura
 
 @Composable
 private fun ZoneNameDialog(
@@ -883,13 +883,13 @@ private fun ZoneNameDialog(
     }
 }
 
-// ── Classes de overlay para zonas e destino (para identificar e remover seletivamente) ───
+// classes de overlay para zonas e destino para identificar e remover seletivamente
 
 private class ZoneCircle : Polygon()
 private class ZoneMarker(map: MapView) : Marker(map)
 private class DestinationMarker(map: MapView) : Marker(map)
 
-// ── Bottom sheet de confirmação de destino ──────────────────────────────────────
+// bottom sheet de confirmacao de destino
 
 @Composable
 private fun DestinationSheet(
@@ -966,10 +966,10 @@ private fun createDestinationMarkerIcon(context: Context): BitmapDrawable {
         strokeWidth = size * 0.08f
         strokeCap = android.graphics.Paint.Cap.ROUND
     }
-    // Cruz de alvo (crosshair)
+    // cruz de alvo crosshair
     canvas.drawRect(size * 0.46f, size * 0.18f, size * 0.54f, size * 0.82f, fgPaint)
     canvas.drawRect(size * 0.18f, size * 0.46f, size * 0.82f, size * 0.54f, fgPaint)
-    // Círculo central
+    // circulo central
     val holePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.parseColor("#1565C0")
         style = Paint.Style.FILL
@@ -987,7 +987,7 @@ private fun createHouseMarkerIcon(context: Context, colorHex: String = "#FF6F00"
     val parsedColor = try { android.graphics.Color.parseColor(colorHex) }
                       catch (_: Exception) { android.graphics.Color.parseColor("#FF6F00") }
 
-    // Fundo: círculo na cor da zona
+    // fundo circulo na cor da zona
     val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = parsedColor
         style = Paint.Style.FILL
@@ -999,7 +999,7 @@ private fun createHouseMarkerIcon(context: Context, colorHex: String = "#FF6F00"
         style = Paint.Style.FILL
     }
 
-    // Telhado (triângulo)
+    // telhado triangulo
     val roof = Path().apply {
         moveTo(size * 0.50f, size * 0.14f)
         lineTo(size * 0.12f, size * 0.50f)
@@ -1008,10 +1008,10 @@ private fun createHouseMarkerIcon(context: Context, colorHex: String = "#FF6F00"
     }
     canvas.drawPath(roof, housePaint)
 
-    // Corpo da casa
+    // corpo da casa
     canvas.drawRect(size * 0.22f, size * 0.47f, size * 0.78f, size * 0.82f, housePaint)
 
-    // Porta (recorte com a cor da zona)
+    // porta recorte com a cor da zona
     val doorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = parsedColor
         style = Paint.Style.FILL
@@ -1031,9 +1031,7 @@ private fun circlePoints(center: GeoPoint, radiusM: Double): List<GeoPoint> {
     }
 }
 
-// ── Tile source ─────────────────────────────────────────────────────────────────
-// CartoDB Dark Matter: mapa escuro minimalista — apenas ruas principais a zoom baixo,
-// ruas menores e labels surgem progressivamente conforme o zoom aumenta.
+// tile source cartodb dark matter mapa escuro minimalista
 
 private fun cartoDarkTileSource(): OnlineTileSourceBase =
     object : OnlineTileSourceBase(

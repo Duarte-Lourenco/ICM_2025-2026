@@ -48,7 +48,7 @@ fun BluetoothScreen(
 
     LaunchedEffect(Unit) { viewModel.init(context) }
 
-    // Permissões BLE necessárias consoante a versão do Android
+    // permissoes ble necessarias consoante a versao do android
     val blePermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
     } else {
@@ -104,7 +104,7 @@ fun BluetoothScreen(
                 .verticalScroll(rememberScrollState())
         ) {
 
-            // cabeçalho
+            // cabecalho
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -136,7 +136,7 @@ fun BluetoothScreen(
                     Spacer(Modifier.height(20.dp))
                 }
 
-                // feedback de último evento
+                // feedback de ultimo evento
                 uiState.lastEventLabel?.let { label ->
                     val isAlert = label.contains("Queda") || label.contains("SOS enviado")
                     Card(
@@ -193,7 +193,7 @@ fun BluetoothScreen(
                     Spacer(Modifier.height(12.dp))
                 }
 
-                // sensor do telemóvel
+                // sensor do telemovel
                 BtSectionHeader("SENSOR INTEGRADO DO TELEMÓVEL")
                 Spacer(Modifier.height(10.dp))
 
@@ -312,7 +312,7 @@ fun BluetoothScreen(
                     )
                 }
 
-                // progresso da ligação gatt
+                // progresso da ligacao gatt
                 val isTransitioning = uiState.gattStatus !in listOf(
                     GattConnectionStatus.DISCONNECTED,
                     GattConnectionStatus.CONNECTED,
@@ -334,11 +334,11 @@ fun BluetoothScreen(
 
                 Spacer(Modifier.height(28.dp))
 
-                // deteção de quedas
+                // detecao de quedas
                 BtSectionHeader("DETEÇÃO DE QUEDAS & SOS")
                 Spacer(Modifier.height(12.dp))
 
-                // Toggle principal
+                // toggle principal
                 Card(
                     colors = CardDefaults.cardColors(CardGray),
                     modifier = Modifier.fillMaxWidth(),
@@ -371,7 +371,7 @@ fun BluetoothScreen(
 
                 Spacer(Modifier.height(16.dp))
 
-                // Sensibilidade
+                // sensibilidade
                 AnimatedVisibility(visible = uiState.fallDetectionEnabled) {
                     Column {
                         Card(
@@ -411,7 +411,7 @@ fun BluetoothScreen(
 
                         Spacer(Modifier.height(12.dp))
 
-                        // Delay SOS
+                        // delay sos
                         Card(
                             colors = CardDefaults.cardColors(CardGray),
                             modifier = Modifier.fillMaxWidth(),
@@ -471,7 +471,7 @@ fun BluetoothScreen(
 
                         Spacer(Modifier.height(12.dp))
 
-                        // Como funciona
+                        // como funciona
                         Card(
                             colors = CardDefaults.cardColors(Color(0xFF1A1A2E)),
                             modifier = Modifier.fillMaxWidth().border(
@@ -497,7 +497,7 @@ fun BluetoothScreen(
 
                         Spacer(Modifier.height(16.dp))
 
-                        // Botão testar
+                        // botao testar
                         OutlinedButton(
                             onClick = { viewModel.simulateFall() },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = VitalRed),

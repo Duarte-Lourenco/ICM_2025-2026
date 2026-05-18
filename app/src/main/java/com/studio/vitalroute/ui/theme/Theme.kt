@@ -36,7 +36,7 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun VitalRouteTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
+    // dynamic color disponivel no android 12 ou superior
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {

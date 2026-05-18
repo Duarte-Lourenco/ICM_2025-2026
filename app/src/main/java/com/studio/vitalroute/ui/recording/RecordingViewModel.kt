@@ -44,22 +44,22 @@ data class RecordingUiState(
     val elevation: String         = "0",
     val calories: String          = "0",
     val activityType: ActivityType = ActivityType.CYCLING,
-    // SOS estado
+    // sos estado
     val isSosCountdown: Boolean   = false,
     val sosCountdownRemaining: Int = 0,
     val sosCountdownTotal: Int    = 15,
     val sosSent: Boolean          = false,
     val lastAlertLabel: String?   = null,
-    // Partilha de localização
+    // partilha de localizacao
     val isLocationSharing: Boolean = false,
     val locationSharingEnabled: Boolean = false,
-    // Geofencing
+    // geofencing
     val arrivedAtZone: String? = null,
-    // Mapa em tempo real
+    // mapa em tempo real
     val currentLat: Double = 0.0,
     val currentLng: Double = 0.0,
     val routePoints: List<String> = emptyList(),
-    // Destino e rota planeada
+    // destino e rota planeada
     val hasDestination: Boolean = false,
     val destinationLat: Double = 0.0,
     val destinationLng: Double = 0.0,
@@ -80,7 +80,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private var routeFetchJob: Job? = null
     private var autoStopHandled     = false
 
-    // Definições carregadas do Firestore para passar ao serviço
+    // definicoes carregadas do firestore para passar ao servico
     private var fallSensitivity        = 0.6f
     private var immobilityEnabled      = true
     private var immobilityMinutes      = 5
@@ -91,10 +91,10 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private var useMetric              = true
 
     init {
-        // Observa o estado do serviço em tempo real
+        // observa o estado do servico em tempo real
         viewModelScope.launch {
             RecordingService.state.collect { s ->
-                // Chegada automática a zona segura → parar gravação
+                // chegada automatica a zona segura para gravacao
                 if (s.autoStopped && s.isRecording && !autoStopHandled) {
                     autoStopHandled = true
                     stopRecording()
@@ -126,7 +126,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
         }
-        // Observa o destino selecionado no ecrã do mapa
+        // observa o destino selecionado no ecra do mapa
         viewModelScope.launch {
             DestinationManager.destination.collect { dest ->
                 _uiState.update {
@@ -140,7 +140,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
 
-        // Carrega as definições de segurança para usar ao iniciar a gravação
+        // carrega definicoes de seguranca para usar ao iniciar a gravacao
         loadSecuritySettings()
     }
 
@@ -168,7 +168,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // partilha de localização
+    // partilha de localizacao
 
     fun toggleLocationSharing(enabled: Boolean) {
         _uiState.update { it.copy(locationSharingEnabled = enabled) }
@@ -184,7 +184,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         DestinationManager.clear()
     }
 
-    // link de partilha de localização
+    // link de partilha de localizacao
 
     fun copyLocationLink(context: Context) {
         val s    = RecordingService.state.value
@@ -220,7 +220,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // iniciar gravação
+    // iniciar gravacao
 
     fun startRecording() {
         autoStopHandled = false
@@ -241,7 +241,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         }
         ctx.startForegroundService(intent)
 
-        // Se houver destino, aguarda o primeiro fix GPS e obtém a rota
+        // se houver destino aguarda o primeiro fix gps e obtem a rota
         val dest = DestinationManager.destination.value
         if (dest != null) {
             routeFetchJob?.cancel()
@@ -254,7 +254,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // parar gravação
+    // parar gravacao
 
     private fun fetchPlannedRoute(
         startLat: Double, startLng: Double,
@@ -287,7 +287,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 }
                 _uiState.update { it.copy(plannedRoutePoints = points) }
             } catch (_: Exception) {
-                // sem internet ou OSRM indisponível — sem rota planeada
+                // sem internet ou osrm indisponivel sem rota planeada
             }
         }
     }

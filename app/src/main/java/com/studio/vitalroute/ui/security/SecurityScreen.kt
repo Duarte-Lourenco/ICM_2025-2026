@@ -45,7 +45,7 @@ fun SecurityScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // lançador de permissão read_contacts
+    // lancador de permissao read_contacts
     var permissionDenied by remember { mutableStateOf(false) }
     val contactPickerLauncherRef = remember { mutableStateOf<(() -> Unit)?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -55,27 +55,27 @@ fun SecurityScreen(
         else permissionDenied = true
     }
 
-    // lançador do picker de contactos do sistema
+    // lancador do picker de contactos do sistema
     val contactPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickContact()
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
 
-        // Ler nome e número de telefone via ContentResolver
+        // ler nome e numero de telefone via contentresolver
         val cr: ContentResolver = context.contentResolver
         var name  = ""
         var phone = ""
 
-        // 1. Nome
+        // nome
         cr.query(uri, arrayOf(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY), null, null, null)
             ?.use { c -> if (c.moveToFirst()) name = c.getString(0) ?: "" }
 
-        // 2. ID do contacto (para obter os números de telefone)
+        // id do contacto para obter os numeros de telefone
         var contactId: String? = null
         cr.query(uri, arrayOf(ContactsContract.Contacts._ID), null, null, null)
             ?.use { c -> if (c.moveToFirst()) contactId = c.getString(0) }
 
-        // 3. Números de telefone
+        // numeros de telefone
         contactId?.let { id ->
             cr.query(
                 ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
@@ -110,7 +110,7 @@ fun SecurityScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // estado geral de proteção
+        // estado geral de protecao
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -144,7 +144,7 @@ fun SecurityScreen(
 
         Spacer(Modifier.height(28.dp))
 
-        // rede de confiança
+        // rede de confianca
         SectionHeader("REDE DE CONFIANÇA")
 
         if (uiState.isLoadingContacts) {
@@ -181,12 +181,11 @@ fun SecurityScreen(
             }
         }
 
-        // Botão adicionar — dois modos
+        // adionar contacto de emergencia pelos contactos ou manual
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Picker de contactos do telemóvel
             Button(
                 onClick = {
                     val granted = ContextCompat.checkSelfPermission(
@@ -203,7 +202,7 @@ fun SecurityScreen(
                 Spacer(Modifier.width(6.dp))
                 Text("Dos Contactos", fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
-            // Entrada manual
+            // entrada manual
             OutlinedButton(
                 onClick = { viewModel.openAddDialog() },
                 modifier = Modifier.weight(1f),
@@ -227,7 +226,7 @@ fun SecurityScreen(
 
         Spacer(Modifier.height(28.dp))
 
-        // deteção de queda
+        // detecao de queda
         SectionHeader("DETEÇÃO DE QUEDA")
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -364,7 +363,7 @@ fun SecurityScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // alertas automáticos
+        // alertas automaticos
         SectionHeader("ALERTAS AUTOMÁTICOS")
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -429,7 +428,7 @@ fun SecurityScreen(
         Spacer(Modifier.height(32.dp))
     }
 
-    // diálogo de adicionar/confirmar contacto
+    // dialogo de adicionar confirmar contacto
     if (uiState.addDialog.visible) {
         AddContactDialog(
             state     = uiState.addDialog,
@@ -443,7 +442,7 @@ fun SecurityScreen(
         )
     }
 
-    // diálogo de adicionar zona segura
+    // dialogo de adicionar zona segura
     if (uiState.addZoneDialog.visible) {
         AddZoneDialog(
             state          = uiState.addZoneDialog,
@@ -481,7 +480,7 @@ private fun AddContactDialog(
                 )
                 Spacer(Modifier.height(16.dp))
 
-                // Nome
+                // nome
                 OutlinedTextField(
                     value         = state.name,
                     onValueChange = onName,
@@ -492,7 +491,6 @@ private fun AddContactDialog(
                 )
                 Spacer(Modifier.height(10.dp))
 
-                // Telefone
                 OutlinedTextField(
                     value         = state.phone,
                     onValueChange = onPhone,
@@ -503,10 +501,9 @@ private fun AddContactDialog(
                 )
                 Spacer(Modifier.height(14.dp))
 
-                // Relação
                 Text("Relação", color = Color.Gray, fontSize = 12.sp)
                 Spacer(Modifier.height(6.dp))
-                // Grid 4 colunas
+                // grid 4 colunas
                 val rows = RELATIONS.chunked(4)
                 rows.forEach { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -537,7 +534,7 @@ private fun AddContactDialog(
                                 )
                             }
                         }
-                        // Preencher células vazias
+                        // preencher celulas vazias
                         repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                     Spacer(Modifier.height(6.dp))
@@ -545,7 +542,7 @@ private fun AddContactDialog(
 
                 Spacer(Modifier.height(8.dp))
 
-                // Toggles SOS / Zonas
+                // toggles sos zonas
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ToggleChip(
                         label    = "Alertas SOS",
@@ -602,7 +599,7 @@ private fun ContactCard(
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Avatar
+                // avatar
                 Box(
                     modifier = Modifier
                         .size(44.dp)
@@ -628,7 +625,6 @@ private fun ContactCard(
             HorizontalDivider(color = Color(0xFF2A2A2A))
             Spacer(Modifier.height(10.dp))
 
-            // Toggles inline
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ToggleChip(
                     label    = "Alertas SOS",
@@ -648,7 +644,7 @@ private fun ContactCard(
         }
     }
 
-    // Confirmação de eliminação
+   // confirmar delete
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
@@ -746,7 +742,6 @@ private fun SafeZoneCard(
         shape    = RoundedCornerShape(12.dp)
     ) {
         Column {
-            // ── Cabeçalho (sempre visível) ──────────────────────────────
             Row(
                 modifier          = Modifier
                     .fillMaxWidth()
@@ -775,12 +770,11 @@ private fun SafeZoneCard(
                 )
             }
 
-            // ── Painel de edição (expandido) ────────────────────────────
             if (expanded) {
                 HorizontalDivider(color = Color(0xFF2A2A2A))
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
 
-                    // Cor do ícone
+                    // cor do icone
                     Text("Cor do ícone", color = Color.Gray, fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -798,7 +792,6 @@ private fun SafeZoneCard(
 
                     Spacer(Modifier.height(16.dp))
 
-                    // Raio de deteção
                     Row(
                         modifier              = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -824,7 +817,6 @@ private fun SafeZoneCard(
 
                     Spacer(Modifier.height(12.dp))
 
-                    // Confirmar eliminação ou botões normais
                     if (showDeleteConfirm) {
                         Surface(color = Color(0xFF2A0000), shape = RoundedCornerShape(10.dp)) {
                             Row(
@@ -933,7 +925,6 @@ private fun AddZoneDialog(
                     }
                 )
 
-                // Geocoding status
                 if (state.geocodeStatus.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     val statusColor = when {

@@ -49,21 +49,21 @@ data class RecordingServiceState(
     val calories: Int           = 0,
     val startTimeMs: Long       = 0L,
     val activityType: String    = "cycling",
-    // Deteção de quedas / imobilidade
+    // deteção de quedas e imobilidade
     val isSosCountdown: Boolean  = false,
     val sosCountdownRemaining: Int = 0,
     val sosCountdownTotal: Int   = 15,
     val sosSent: Boolean         = false,
     val lastAlertLabel: String?  = null,
-    // Partilha de localização em tempo real
+    // partilha de localizacao em tempo real
     val isLocationSharing: Boolean = false,
-    // Geofencing — chegada a zona segura
+    // geofencing chegada a zona segura
     val arrivedAtZone: String?  = null,
     val autoStopped: Boolean    = false,
-    // Coordenadas GPS atuais (para link de partilha)
+    // coordenadas gps atuais para link de partilha
     val currentLat: Double = 0.0,
     val currentLng: Double = 0.0,
-    // Dados gravados — exportados ao parar (para persistência no Firestore)
+    // dados gravados exportados ao parar para persistencia no firestore
     val elevationPoints: List<Int>  = emptyList(),
     val routePoints: List<String>   = emptyList()
 )
@@ -80,29 +80,29 @@ class RecordingService : Service(), SensorEventListener {
         const val ACTION_CANCEL_SOS  = "com.studio.vitalroute.CANCEL_SOS"
         const val ACTION_TRIGGER_SOS = "com.studio.vitalroute.TRIGGER_SOS"
 
-        // Extras para configuração
+        // extras para configuracao
         const val EXTRA_ACTIVITY_TYPE           = "activity_type"
-        const val EXTRA_FALL_SENSITIVITY        = "fall_sensitivity"       // Float 0..1
-        const val EXTRA_IMMOBILITY_ENABLED      = "immobility_enabled"     // Boolean
-        const val EXTRA_IMMOBILITY_MINUTES      = "immobility_minutes"     // Int
-        const val EXTRA_SOS_DELAY_SECS          = "sos_delay_secs"         // Int
-        const val EXTRA_ROUTE_DEVIATION_ENABLED = "route_deviation_enabled" // Boolean
-        const val EXTRA_LOCATION_SHARING        = "location_sharing"       // Boolean
-        const val EXTRA_ARRIVAL_ALERT_ENABLED   = "arrival_alert_enabled"  // Boolean
-        const val EXTRA_WEIGHT_KG               = "weight_kg"              // Float
+        const val EXTRA_FALL_SENSITIVITY        = "fall_sensitivity"       // float 0 a 1
+        const val EXTRA_IMMOBILITY_ENABLED      = "immobility_enabled"     // boolean
+        const val EXTRA_IMMOBILITY_MINUTES      = "immobility_minutes"     // int
+        const val EXTRA_SOS_DELAY_SECS          = "sos_delay_secs"         // int
+        const val EXTRA_ROUTE_DEVIATION_ENABLED = "route_deviation_enabled" // boolean
+        const val EXTRA_LOCATION_SHARING        = "location_sharing"       // boolean
+        const val EXTRA_ARRIVAL_ALERT_ENABLED   = "arrival_alert_enabled"  // boolean
+        const val EXTRA_WEIGHT_KG               = "weight_kg"              // float
 
-        // Notificação de chegada a zona segura
+        // notificacao de chegada a zona segura
         const val CHANNEL_ARRIVAL_ID    = "vitalroute_arrival"
         const val NOTIF_ARRIVAL_ID      = 1002
 
-        // Threshold de desvio: salto GPS > 400m em < 60s → anomalia
+        // threshold desvio salto gps maior 400m em menos 60s
         private const val ROUTE_DEVIATION_JUMP_M  = 400f
         private const val ROUTE_DEVIATION_JUMP_MS = 60_000L
-        // Velocidade anómala: > 80 km/h durante > 30s numa atividade não motorizada
+        // velocidade anomala maior 80kmh durante mais 30s
         private const val ANOMALOUS_SPEED_KMH  = 80.0
         private const val ANOMALOUS_SPEED_MS   = 30_000L
 
-        // Estado partilhado — acessível do ViewModel sem binding
+        // estado partilhado acessivel do viewmodel sem binding
         private val _state = MutableStateFlow(RecordingServiceState())
         val state: StateFlow<RecordingServiceState> = _state.asStateFlow()
     }
@@ -114,57 +114,57 @@ class RecordingService : Service(), SensorEventListener {
     private var deviationJob: Job?       = null
     private var locationSharingJob: Job? = null
 
-    // GPS
+    // gps
     private lateinit var locationManager: LocationManager
     private var lastLocation: Location? = null
     private var lastMovementTime: Long  = 0L
     private var totalDistanceM = 0.0
     private var lastKnownLocation: Location? = null
 
-    // Acelerómetro
+    // acelerometro
     private lateinit var sensorManager: SensorManager
     private var accelerometerSensor: Sensor? = null
-    private var fallSensitivity   = 0.6f  // 0 = baixa, 1 = alta
-    private var lastFallTime      = 0L    // debounce: não re-acionar por 10s
+    private var fallSensitivity   = 0.6f  // 0 baixa 1 alta
+    private var lastFallTime      = 0L    // debounce nao reacionar por 10s
     private var fallPhase         = FallPhase.NONE
-    private var freeFallStartTime = 0L    // timestamp de entrada na fase de queda livre
+    private var freeFallStartTime = 0L    // timestamp entrada na fase de queda livre
 
-    // Desvio de rota
+    // movimento anomalo
     private var routeDeviationEnabled  = false
     private var anomalousSpeedStart    = 0L
     private var lastLocationTimestamp  = 0L
 
-    // Perfil do utilizador para cálculo de calorias
+    // peso do utilizador para calculo de calorias
     private var userWeightKg              = 70.0
 
-    // Partilha de localização em tempo real
+    // partilha de localizacao em tempo real
     private var locationSharingEnabled    = false
-    private var locationSharingSmsSent    = false  // evita enviar o SMS inicial antes de ter GPS
+    private var locationSharingSmsSent    = false  // evita enviar sms inicial antes de ter gps
     private val firestoreRepository       = FirestoreRepository()
 
-    // Geofencing
+    // geofencing
     private var arrivalAlertEnabled    = false
     private val safeZones              = mutableListOf<FirestoreSafeZone>()
-    private val triggeredZones         = mutableSetOf<String>()  // IDs já notificados (debounce)
+    private val triggeredZones         = mutableSetOf<String>()  // ids ja notificados debounce
 
-    // Amostras para gráficos (acumuladas em memória, exportadas ao parar)
-    private val elevationSamples       = mutableListOf<Int>()    // altitude GPS real a cada ~30 s
-    private val routeSamples           = mutableListOf<String>() // "lat,lng" a cada ~60 s
-    private var lastElevationSampleSec = 0L   // elapsedSeconds na última amostra de elevação
-    private var lastRouteSampleSec     = 0L   // elapsedSeconds na última amostra de rota
-    private var lastRawAltForProfile   = Double.NaN  // altitude GPS para o perfil
+    // amostras para graficos acumuladas em memoria exportadas ao parar
+    private val elevationSamples       = mutableListOf<Int>()    // altitude gps real a cada 30s
+    private val routeSamples           = mutableListOf<String>() // lat lng a cada 10s
+    private var lastElevationSampleSec = 0L   // elapsedseconds na ultima amostra de elevacao
+    private var lastRouteSampleSec     = 0L   // elapsedseconds na ultima amostra de rota
+    private var lastRawAltForProfile   = Double.NaN  // altitude gps para o perfil
 
-    // Calorias acumuladas incrementalmente (só conta quando em movimento)
+    // calorias acumuladas so conta quando em movimento
     private var caloriesAccumulated    = 0.0
 
-    // Velocidade máxima registada durante a atividade
+    // velocidade maxima registada durante a atividade
     private var maxSpeedKmh            = 0.0
 
-    // Elevação acumulada (só conta subidas reais, filtra ruído GPS)
+    // elevacao acumulada so conta subidas reais filtra ruido gps
     private var elevationGainM         = 0.0
     private var lastAltitudeM          = Double.NaN
 
-    // Configuração
+    // configuracao
     private var activityType         = "cycling"
     private var immobilityEnabled    = true
     private var immobilityMinutes    = 5
@@ -189,7 +189,7 @@ class RecordingService : Service(), SensorEventListener {
         when (intent?.action) {
             ACTION_TRIGGER_SOS -> triggerSosCountdown("SOS manual acionado!")
             ACTION_START     -> {
-                // Lê as configurações passadas pelo ViewModel
+                // le as configuracoes passadas pelo viewmodel
                 activityType           = intent.getStringExtra(EXTRA_ACTIVITY_TYPE) ?: "cycling"
                 fallSensitivity        = intent.getFloatExtra(EXTRA_FALL_SENSITIVITY, 0.6f)
                 immobilityEnabled      = intent.getBooleanExtra(EXTRA_IMMOBILITY_ENABLED, true)
@@ -220,7 +220,7 @@ class RecordingService : Service(), SensorEventListener {
         _state.value = RecordingServiceState()
     }
 
-    // iniciar gravação
+    // iniciar gravacao
 
     private fun startRecording() {
         val now = System.currentTimeMillis()
@@ -230,7 +230,7 @@ class RecordingService : Service(), SensorEventListener {
         elevationSamples.clear()
         routeSamples.clear()
         lastElevationSampleSec = 0L
-        lastRouteSampleSec     = -10L  // permite capturar o primeiro ponto ao primeiro fix GPS
+        lastRouteSampleSec     = -10L  // permite capturar o primeiro ponto ao primeiro fix gps
         lastRawAltForProfile   = Double.NaN
 
         _state.value = RecordingServiceState(
@@ -260,7 +260,7 @@ class RecordingService : Service(), SensorEventListener {
         if (arrivalAlertEnabled) loadSafeZonesForGeofencing()
     }
 
-    // parar gravação
+    // parar gravacao
 
     private fun stopRecording() {
         timerJob?.cancel()
@@ -270,7 +270,7 @@ class RecordingService : Service(), SensorEventListener {
         locationSharingJob?.cancel()
         stopLocationUpdates()
         stopAccelerometer()
-        // Para de partilhar localização ao terminar a gravação
+        // para de partilhar localizacao ao terminar a gravacao
         if (locationSharingEnabled) {
             val type = _state.value.activityType
             serviceScope.launch(Dispatchers.IO) {
@@ -295,7 +295,7 @@ class RecordingService : Service(), SensorEventListener {
         _state.update { it.copy(isRecording = false, isLocationSharing = false, arrivedAtZone = null, autoStopped = false) }
     }
 
-    // sos: cancelar (botão "estou bem")
+    // sos cancelar botao estou bem
 
     private fun cancelSos() {
         sosJob?.cancel()
@@ -308,7 +308,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // cronómetro
+    // cronometro
 
     private fun startTimer() {
         timerJob = serviceScope.launch {
@@ -326,7 +326,7 @@ class RecordingService : Service(), SensorEventListener {
 
     @SuppressLint("MissingPermission")
     private fun startLocationUpdates() {
-        // GPS — precisão total
+        // gps precisao total
         try {
             locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
@@ -334,8 +334,8 @@ class RecordingService : Service(), SensorEventListener {
                 locationListener
             )
         } catch (_: Exception) {}
-        // Network provider — fix inicial muito mais rápido (torres / Wi-Fi)
-        // Substitui GPS enquanto o chip não obtém satélites, depois é sobreposto
+        // network provider fix inicial mais rapido torres wifi
+        // substitui gps enquanto o chip nao obtem satelites
         try {
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 locationManager.requestLocationUpdates(
@@ -379,10 +379,10 @@ class RecordingService : Service(), SensorEventListener {
                 val positionDeltaM = last.distanceTo(location)
 
                 val distanceDelta: Float = when {
-                    // 1ª opção: velocidade Doppler × tempo — precisa e sem ruído de posição
+                    // velocidade doppler x tempo sem ruido de posicao
                     speedMs > 0.3f && deltaMs in 200L..10_000L ->
                         speedMs * (deltaMs / 1000f)
-                    // 2ª opção: diferença de posição com filtro de precisão GPS
+                    // diferenca de posicao com filtro de precisao gps
                     location.accuracy < 15f && positionDeltaM in 5f..300f ->
                         positionDeltaM
                     else -> 0f
@@ -393,7 +393,7 @@ class RecordingService : Service(), SensorEventListener {
                     lastMovementTime = now
                 }
 
-                // desvio de rota: salto GPS anómalo
+                // salto gps anomalo
                 if (routeDeviationEnabled
                     && !_state.value.isSosCountdown
                     && _state.value.elapsedSeconds > 120
@@ -412,7 +412,7 @@ class RecordingService : Service(), SensorEventListener {
 
             val distKm = totalDistanceM / 1000.0
 
-            // acumula ganho de elevação (só subidas reais, ignora ruído < 5 m)
+            // acumula ganho de elevacao so subidas reais ignora ruido
             val rawAlt = if (location.provider == LocationManager.GPS_PROVIDER && location.hasAltitude())
                 location.altitude else Double.NaN
             val vertOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && location.hasVerticalAccuracy())
@@ -432,13 +432,13 @@ class RecordingService : Service(), SensorEventListener {
             }
             val altM = elevationGainM.toInt()
 
-            // acumula calorias só quando em movimento (> 1 km/h)
+            // acumula calorias so quando em movimento maior 1kmh
             if (speedKmh >= 1.0f && last != null && prevTimestamp > 0L) {
                 val deltaSecs = (now - prevTimestamp) / 1000.0
                 caloriesAccumulated += metForSpeed(speedKmh.toDouble(), _state.value.activityType) * userWeightKg * (deltaSecs / 3600.0)
             }
 
-            // desvio de rota: velocidade anómala sustentada
+            // velocidade anomala sustentada
             if (routeDeviationEnabled && !_state.value.isSosCountdown) {
                 if (speedKmh > ANOMALOUS_SPEED_KMH) {
                     if (anomalousSpeedStart == 0L) anomalousSpeedStart = now
@@ -452,14 +452,14 @@ class RecordingService : Service(), SensorEventListener {
                 }
             }
 
-            // amostras periódicas: elevação (30 s) e rota (10 s)
+            // amostras periodicas elevacao 30s e rota 10s
             val elapsed = _state.value.elapsedSeconds
             if (location.provider == LocationManager.GPS_PROVIDER
                 && location.hasAltitude()
                 && elapsed - lastElevationSampleSec >= 30L
             ) {
                 val rawAlt = location.altitude
-                // Suaviza ruído GPS: só grava se diferença > 2m em relação à amostra anterior
+                // suaviza ruido gps so grava se diferenca maior 2m
                 if (lastRawAltForProfile.isNaN() || kotlin.math.abs(rawAlt - lastRawAltForProfile) >= 2.0) {
                     lastRawAltForProfile = rawAlt
                 }
@@ -487,7 +487,7 @@ class RecordingService : Service(), SensorEventListener {
                 )
             }
 
-            // geofencing: verificar proximidade de zonas seguras
+            // geofencing verificar proximidade de zonas seguras
             if (arrivalAlertEnabled && safeZones.isNotEmpty()) {
                 checkGeofenceArrival(location)
             }
@@ -502,7 +502,7 @@ class RecordingService : Service(), SensorEventListener {
 
     private fun checkGeofenceArrival(location: android.location.Location) {
         for (zone in safeZones) {
-            if (zone.id in triggeredZones) continue   // já notificado nesta sessão
+            if (zone.id in triggeredZones) continue   // ja notificado nesta sessao
 
             val zoneLocation = android.location.Location("zone").apply {
                 latitude  = zone.lat
@@ -520,7 +520,7 @@ class RecordingService : Service(), SensorEventListener {
     private fun onArrivalAtZone(zone: FirestoreSafeZone) {
         _state.update { it.copy(arrivedAtZone = zone.name, autoStopped = true) }
 
-        // Notificação push de chegada
+        // notificacao push de chegada
         val notification = androidx.core.app.NotificationCompat
             .Builder(this, CHANNEL_ARRIVAL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
@@ -533,7 +533,7 @@ class RecordingService : Service(), SensorEventListener {
         (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
             .notify(NOTIF_ARRIVAL_ID + zone.id.hashCode(), notification)
 
-        // SMS para contactos com zonesEnabled = true
+        // sms para contactos com zonesenabled ativo
         serviceScope.launch(Dispatchers.IO) {
             try {
                 val contacts = firestoreRepository.getZoneContactsOnce()
@@ -553,7 +553,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // acelerómetro — deteção de quedas
+    // acelerometro deteção de quedas
 
     private fun startAccelerometer() {
         accelerometerSensor?.let {
@@ -570,42 +570,42 @@ class RecordingService : Service(), SensorEventListener {
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
         if (!_state.value.isRecording) return
-        if (_state.value.isSosCountdown) return  // já há um SOS ativo
+        if (_state.value.isSosCountdown) return  // ja ha um sos ativo
 
         val x = event.values[0]
         val y = event.values[1]
         val z = event.values[2]
-        val magnitude = sqrt(x * x + y * y + z * z)   // m/s² incluindo gravidade (≈9.8 em repouso)
+        val magnitude = sqrt(x * x + y * y + z * z)   // ms2 incluindo gravidade aprox 98 em repouso
 
-        // Thresholds baseados na sensibilidade configurada
-        // Sensibilidade 0.0 → threshold alto (poucos falsos positivos)
-        // Sensibilidade 1.0 → threshold baixo (deteção mais fácil)
-        val freeFallThreshold = lerp(4.0f, 2.0f, fallSensitivity)   // m/s²
-        val impactThreshold   = lerp(30f, 18f, fallSensitivity)      // m/s²
+        // thresholds baseados na sensibilidade configurada
+        // sensibilidade 00 threshold alto poucos falsos positivos
+        // sensibilidade 10 threshold baixo detecao mais facil
+        val freeFallThreshold = lerp(4.0f, 2.0f, fallSensitivity)   // ms2
+        val impactThreshold   = lerp(30f, 18f, fallSensitivity)      // ms2
 
         val now = System.currentTimeMillis()
-        // Debounce: não re-acionar durante 10 segundos após a última queda
+        // debounce nao reacionar durante 10s apos a ultima queda
         if (now - lastFallTime < 10_000L) return
 
         when (fallPhase) {
             FallPhase.NONE -> {
-                // Fase 1: queda livre (magnitude muito baixa = pouco peso sentido)
+                // fase 1 queda livre magnitude muito baixa pouco peso sentido
                 if (magnitude < freeFallThreshold) {
                     fallPhase = FallPhase.FREE_FALL
                     freeFallStartTime = now
                 }
             }
             FallPhase.FREE_FALL -> {
-                // Fase 2: impacto (magnitude muito alta) logo a seguir à queda livre
+                // fase 2 impacto magnitude muito alta logo apos queda livre
                 if (magnitude > impactThreshold) {
                     lastFallTime = now
                     fallPhase = FallPhase.NONE
                     onFallDetected()
                 } else if (now - freeFallStartTime > 1500L) {
-                    // Sem impacto em 1.5s — provavelmente não foi uma queda real
+                    // sem impacto em 15s provavelmente nao foi uma queda real
                     fallPhase = FallPhase.NONE
                 }
-                // Não reseta por valores intermédios: a transição queda→impacto
+                // nao reseta por valores intermedios a transicao queda impacto
                 // passa naturalmente por magnitudes entre o threshold e o impacto
             }
         }
@@ -620,9 +620,9 @@ class RecordingService : Service(), SensorEventListener {
 
     private fun startImmobilityMonitor() {
         immobilityJob = serviceScope.launch {
-            delay(60_000L) // espera 1 minuto antes de começar a monitorizar
+            delay(60_000L) // espera 1 minuto antes de monitorizar
             while (true) {
-                delay(30_000L) // verifica a cada 30 segundos
+                delay(30_000L) // verifica a cada 30s
                 if (!_state.value.isRecording) break
                 if (_state.value.isSosCountdown) continue
 
@@ -631,26 +631,25 @@ class RecordingService : Service(), SensorEventListener {
 
                 if (inactiveMs >= thresholdMs && _state.value.elapsedSeconds > 60) {
                     triggerSosCountdown("Imobilidade detetada! A enviar SOS em...")
-                    // Depois de acionar, espera pelo menos o dobro do tempo configurado
+                    // depois de acionar espera o dobro do tempo configurado
                     delay(thresholdMs * 2)
                 }
             }
         }
     }
 
-    // monitor de desvio de rota
+    // monitor de movimento anomalo
 
     private fun startRouteDeviationMonitor() {
         deviationJob = serviceScope.launch {
-            delay(120_000L) // espera 2 minutos — utilizador estabelece rota
+            delay(120_000L) // espera 2 minutos
             while (true) {
                 delay(60_000L) // verifica a cada minuto
                 if (!_state.value.isRecording) break
                 if (_state.value.isSosCountdown) continue
 
                 val s = _state.value
-                // Alerta se velocidade > 80 km/h durante atividade pedestre/ciclismo
-                // (verificação periódica adicional à deteção em tempo real no GPS listener)
+                // verificacao periodica de velocidade anomala
                 if (s.speedKmh > ANOMALOUS_SPEED_KMH) {
                     if (anomalousSpeedStart == 0L)
                         anomalousSpeedStart = System.currentTimeMillis()
@@ -659,7 +658,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // geofencing: carrega zonas ao início
+    // geofencing carrega zonas ao inicio
 
     private fun loadSafeZonesForGeofencing() {
         serviceScope.launch(Dispatchers.IO) {
@@ -671,17 +670,17 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // partilha de localização em tempo real
+    // partilha de localizacao em tempo real
 
     private fun startLocationSharing() {
         _state.update { it.copy(isLocationSharing = true) }
 
-        locationSharingSmsSent = false  // SMS inicial enviado assim que o GPS tiver fix
+        locationSharingSmsSent = false  // sms inicial enviado assim que o gps tiver fix
 
         var smsTickCounter = 0
         locationSharingJob = serviceScope.launch {
             while (true) {
-                delay(10_000L) // atualiza Firestore a cada 10 segundos
+                delay(10_000L) // atualiza firestore a cada 10s
                 if (!_state.value.isRecording) break
                 val loc = lastKnownLocation ?: continue
 
@@ -694,7 +693,7 @@ class RecordingService : Service(), SensorEventListener {
                     )
                 }
 
-                // SMS de atualização a cada 5 minutos (30 × 10s)
+                // sms de atualizacao a cada 5 minutos
                 smsTickCounter++
                 if (smsTickCounter >= 30) {
                     smsTickCounter = 0
@@ -726,10 +725,10 @@ class RecordingService : Service(), SensorEventListener {
         sosJob = serviceScope.launch {
             for (remaining in (sosDelaySecs - 1) downTo 0) {
                 delay(1_000L)
-                if (!_state.value.isSosCountdown) return@launch // foi cancelado
+                if (!_state.value.isSosCountdown) return@launch // foi cancelado pelo utilizador
                 _state.update { it.copy(sosCountdownRemaining = remaining) }
             }
-            // Chegou a zero → envia SMS
+            // chegou a zero envia sms
             _state.update {
                 it.copy(
                     isSosCountdown = false,
@@ -738,7 +737,7 @@ class RecordingService : Service(), SensorEventListener {
                     lastAlertLabel = "SOS enviado!"
                 )
             }
-            // Envia SMS em IO dispatcher
+            // envia sms em io dispatcher
             launch(Dispatchers.IO) {
                 SosManager.sendSos(
                     context  = applicationContext,
@@ -748,7 +747,7 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    // notificação persistente
+    // notificacao persistente
 
     private fun buildNotification(time: String, distance: String): Notification {
         val openIntent = Intent(this, MainActivity::class.java).apply {
@@ -840,17 +839,7 @@ class RecordingService : Service(), SensorEventListener {
         return "%02d:%02d:%02d".format(h, m, s)
     }
 
-    /**
-     * Calorias baseadas em MET (Metabolic Equivalent of Task) com velocidade real.
-     * Fórmula padrão: kcal = MET × peso(kg) × tempo(horas)
-     * Peso assumido: 70 kg (valor médio; futuramente configurável no perfil).
-     *
-     * Valores MET por velocidade — baseados em compêndio de atividades físicas
-     * (Ainsworth et al., 2011):
-     *   Ciclismo: 4.0 (< 10 km/h) → 10.0 (> 30 km/h)
-     *   Corrida:  6.0 (< 6 km/h)  → 14.5 (> 18 km/h)
-     *   Caminhada: 2.5 (< 2 km/h) →  5.0 (> 6 km/h)
-     */
+    // calorias por met x peso x tempo baseado em ainsworth et al 2011
     private fun metForSpeed(speedKmh: Double, type: String): Double = when (type) {
         "running" -> when {
             speedKmh < 6.0  -> 6.0
@@ -870,7 +859,7 @@ class RecordingService : Service(), SensorEventListener {
             speedKmh < 7.0  -> 5.0
             else             -> 6.0
         }
-        else -> when { // ciclismo
+        else -> when { // cycling
             speedKmh < 10.0 -> 4.0
             speedKmh < 16.0 -> 5.8
             speedKmh < 20.0 -> 7.0
@@ -880,9 +869,9 @@ class RecordingService : Service(), SensorEventListener {
         }
     }
 
-    /** Interpolação linear entre dois valores */
+    // interpolacao linear entre dois valores
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t.coerceIn(0f, 1f)
 }
 
-// Fases do algoritmo de deteção de queda (queda livre → impacto)
+// fases do algoritmo de detecao de queda queda livre e impacto
 private enum class FallPhase { NONE, FREE_FALL }

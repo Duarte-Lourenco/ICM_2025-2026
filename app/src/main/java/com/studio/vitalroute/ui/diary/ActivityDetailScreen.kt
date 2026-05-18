@@ -217,7 +217,7 @@ private fun ActivityDetailContent(activity: Activity, useMetric: Boolean) {
 
                 Spacer(Modifier.height(24.dp))
 
-                // distância — destaque principal como o Strava
+                // distancia destaque principal
                 Text(
                     text = "%.2f".format(distDisplay),
                     color = Color.White,
@@ -229,7 +229,7 @@ private fun ActivityDetailContent(activity: Activity, useMetric: Boolean) {
             }
         }
 
-        // grid de métricas principais
+        // grid de metricas principais
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -292,7 +292,7 @@ private fun ActivityDetailContent(activity: Activity, useMetric: Boolean) {
             }
         }
 
-        // perfil de elevação
+        // perfil de elevacao
         if (activity.elevationPoints.size >= 3) {
             Card(
                 modifier = Modifier
@@ -450,7 +450,7 @@ private fun DetailRouteMap(points: List<String>) {
                 controller.setZoom(14.0)
                 controller.setCenter(coords.first())
 
-                // Desenha o trajeto
+                // desenha o trajeto
                 val polyline = Polyline(this).apply {
                     setPoints(coords)
                     outlinePaint.color       = android.graphics.Color.parseColor("#4CAF50")
@@ -461,7 +461,7 @@ private fun DetailRouteMap(points: List<String>) {
                 }
                 overlays.add(polyline)
 
-                // Ajusta o zoom para mostrar todo o trajeto
+                // ajusta o zoom para mostrar todo o trajeto
                 val minLat = coords.minOf { it.latitude }
                 val maxLat = coords.maxOf { it.latitude }
                 val minLng = coords.minOf { it.longitude }

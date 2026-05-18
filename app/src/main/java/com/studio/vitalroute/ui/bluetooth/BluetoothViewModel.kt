@@ -72,13 +72,13 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
     private var sosJob: Job?   = null
     private var scanCallback: ScanCallback? = null
 
-    // Gestor da ligação GATT
+    // gestor da ligacao gatt
     private var gattManager: BleGattManager? = null
 
-    // Cache de contactos para envio de SOS offline
+    // cache de contactos para envio de sos offline
     private var cachedSosContacts: List<SosContact> = emptyList()
 
-    // sensor do telemóvel
+    // sensor do telemovel
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor?        = null
     private var phoneFallPhase                = PhoneFallPhase.NONE
@@ -121,7 +121,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t.coerceIn(0f, 1f)
 
-    // inicialização
+    // inicializacao
 
     fun init(context: Context) {
         val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -234,7 +234,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(isScanning = false) }
     }
 
-    // ligar ao dispositivo (via gatt real ou simulado)
+    // ligar ao dispositivo via gatt real ou simulado
 
     fun connect(device: BleDevice) {
         gattManager?.close()
@@ -256,7 +256,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         gattManager!!.connect(btDevice)
     }
 
-    // Constrói um BleGattManager com os callbacks padrão
+    // constroi um blegattmanager com os callbacks padrao
     private fun buildGattManager(device: BleDevice): BleGattManager =
         BleGattManager(
             context = ctx,
@@ -292,19 +292,19 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
             }
         )
 
-    // Fallback: emulador ou dispositivo simulado — corre a simulação interna do BleGattManager
+    // fallback emulador ou simulado usa simulacao interna do blegattmanager
     private fun connectSimulated(device: BleDevice) {
         gattManager = buildGattManager(device).also { it.sensitivity = _uiState.value.fallSensitivity }
 
-        // O BleGattManager deteta endereços "AA:BB:CC" e entra em modo simulado.
-        // Se não há adaptador, simulamos manualmente os estados aqui.
+        // blegattmanager deteta enderecos aa bb cc e entra em modo simulado
+        // sem adaptador simulamos os estados manualmente
         val fakeDevice = try { bluetoothAdapter?.getRemoteDevice("AA:BB:CC:11:22:33") }
                          catch (_: Exception) { null }
 
         if (fakeDevice != null) {
             gattManager!!.connect(fakeDevice)
         } else {
-            // Sem adaptador BT (emulador puro) — gere estados diretamente
+            // sem adaptador bt gere estados diretamente
             viewModelScope.launch {
                 _uiState.update { it.copy(
                     gattStatus      = GattConnectionStatus.CONNECTING,
@@ -327,7 +327,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
                     },
                     lastEventLabel  = "Ligado a ${device.name}"
                 )}
-                // Simula queda ao fim de 8 segundos para demonstração
+                // simula queda ao fim de 8 segundos
                 delay(8_000)
                 if (_uiState.value.connectedDevice?.address == device.address
                     && _uiState.value.fallDetectionEnabled
@@ -353,7 +353,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         )}
     }
 
-    // definições de deteção de quedas
+    // definicoes de detecao de quedas
 
     fun toggleFallDetection(enabled: Boolean) {
         _uiState.update { it.copy(fallDetectionEnabled = enabled) }
@@ -372,7 +372,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(sosSent = false, lastEventLabel = null) }
     }
 
-    // simular queda (botão de teste)
+    // simular queda botao de teste
 
     fun simulateFall() {
         if (!_uiState.value.fallDetectionEnabled) return

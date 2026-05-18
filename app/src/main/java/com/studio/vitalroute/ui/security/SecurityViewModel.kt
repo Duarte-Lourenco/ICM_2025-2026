@@ -38,7 +38,7 @@ data class SafeZone(
     val radiusM: Int   = 150
 )
 
-// Estado do diálogo de adicionar zona segura
+// estado do dialogo de adicionar zona segura
 data class AddZoneDialogState(
     val visible: Boolean   = false,
     val name: String       = "",
@@ -47,10 +47,10 @@ data class AddZoneDialogState(
     val error: String?     = null,
     val geocodedLat: Double = 0.0,
     val geocodedLng: Double = 0.0,
-    val geocodeStatus: String = ""   // "", "A localizar...", "✓ Localizado", "! Sem coordenadas"
+    val geocodeStatus: String = ""   // vazio a localizar localizado sem coordenadas
 )
 
-// Estado do diálogo de adicionar contacto
+// estado do dialogo de adicionar contacto
 data class AddContactDialogState(
     val visible: Boolean   = false,
     val name: String       = "",
@@ -74,7 +74,7 @@ data class SecurityUiState(
     val immobilityMinutes: Int          = 5,
     val arrivalAlertEnabled: Boolean    = true,
     val routeDeviationEnabled: Boolean  = false,
-    // Diálogos
+    // dialogos
     val addDialog: AddContactDialogState = AddContactDialogState(),
     val addZoneDialog: AddZoneDialogState = AddZoneDialogState()
 )
@@ -93,7 +93,7 @@ class SecurityViewModel : ViewModel() {
         loadSettings()
     }
 
-    // zonas seguras (firestore)
+    // zonas seguras firestore
 
     private fun loadSafeZones() {
         viewModelScope.launch {
@@ -119,7 +119,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // Lista raw guardada para poder editar sem perder lat/lng
+    // lista raw guardada para poder editar sem perder lat lng
     private var rawZones: List<FirestoreSafeZone> = emptyList()
 
     private fun FirestoreSafeZone.toUi(): SafeZone {
@@ -148,7 +148,7 @@ class SecurityViewModel : ViewModel() {
         _uiState.update { it.copy(addZoneDialog = it.addZoneDialog.copy(address = v, geocodeStatus = "")) }
     }
 
-    /** Geocodifica o endereço atual e atualiza o estado do diálogo. */
+    // geocodifica o endereco atual e atualiza o estado do dialogo
     fun geocodeCurrentAddress() {
         val addr = _uiState.value.addZoneDialog.address.trim()
         if (addr.isBlank()) return
@@ -171,7 +171,7 @@ class SecurityViewModel : ViewModel() {
         _uiState.update { it.copy(addZoneDialog = it.addZoneDialog.copy(isSaving = true, error = null)) }
 
         viewModelScope.launch {
-            // usa coordenadas já geocodificadas pelo utilizador; só refaz se ainda são zero
+            // usa coordenadas ja geocodificadas so refaz se ainda sao zero
             var lat = d.geocodedLat
             var lng = d.geocodedLng
             if (lat == 0.0 && lng == 0.0 && d.address.isNotBlank()) {
@@ -193,7 +193,7 @@ class SecurityViewModel : ViewModel() {
                 )
                 closeAddZoneDialog()
             } catch (e: Exception) {
-                // Fallback local
+                // fallback local
                 val localZone = SafeZone(
                     id      = "local_${System.currentTimeMillis()}",
                     name    = d.name.trim(),
@@ -220,7 +220,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // contactos (firestore)
+    // contactos firestore
 
     private fun loadContacts() {
         viewModelScope.launch {
@@ -246,7 +246,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // diálogo: abrir com dados do picker do sistema
+    // dialogo abrir com dados do picker do sistema
 
     fun openDialogFromPicker(name: String, phone: String) {
         _uiState.update {
@@ -261,7 +261,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // diálogo: abrir vazio (introdução manual)
+    // dialogo abrir vazio introducao manual
 
     fun openAddDialog() {
         _uiState.update {
@@ -279,7 +279,7 @@ class SecurityViewModel : ViewModel() {
     fun updateDialogSos(v: Boolean)       { _uiState.update { it.copy(addDialog = it.addDialog.copy(sosEnabled = v)) } }
     fun updateDialogZones(v: Boolean)     { _uiState.update { it.copy(addDialog = it.addDialog.copy(zonesEnabled = v)) } }
 
-    // guardar contacto (do diálogo)
+    // guardar contacto do dialogo
 
     fun saveContactFromDialog() {
         val d = _uiState.value.addDialog
@@ -298,10 +298,10 @@ class SecurityViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val savedId = repository.saveContact(newContact)
-                // Firestore guardou — o Flow atualiza automaticamente a lista
+                // firestore guardou o flow atualiza automaticamente a lista
                 closeAddDialog()
             } catch (_: Exception) {
-                // Sem Firebase (modo offline/convidado) → guarda localmente na sessão
+                // sem firebase modo offline guarda localmente na sessao
                 val localContact = TrustedContact(
                     id           = "local_${System.currentTimeMillis()}",
                     name         = newContact.name,
@@ -320,7 +320,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // apagar contacto
+    // apagar contacto firestore
 
     fun deleteContact(contactId: String) {
         viewModelScope.launch {
@@ -328,7 +328,7 @@ class SecurityViewModel : ViewModel() {
                 repository.deleteContact(contactId)
                 // o Flow atualiza automaticamente
             } catch (_: Exception) {
-                // Sem Firebase → remove do estado local
+                // sem firebase remove do estado local
                 _uiState.update { s ->
                     s.copy(contacts = s.contacts.filter { it.id != contactId })
                 }
@@ -336,11 +336,11 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // toggles sos / zonas
+    // toggles sos e zonas
 
     fun toggleSos(contactId: String, enabled: Boolean) {
         val c = _uiState.value.contacts.find { it.id == contactId } ?: return
-        // Atualiza estado local imediatamente (UX responsivo)
+        // atualiza estado local imediatamente ux responsivo
         _uiState.update { s ->
             s.copy(contacts = s.contacts.map {
                 if (it.id == contactId) it.copy(sosEnabled = enabled) else it
@@ -360,7 +360,7 @@ class SecurityViewModel : ViewModel() {
 
     fun toggleZones(contactId: String, enabled: Boolean) {
         val c = _uiState.value.contacts.find { it.id == contactId } ?: return
-        // Atualiza estado local imediatamente (UX responsivo)
+        // atualiza estado local imediatamente ux responsivo
         _uiState.update { s ->
             s.copy(contacts = s.contacts.map {
                 if (it.id == contactId) it.copy(zonesEnabled = enabled) else it
@@ -378,7 +378,7 @@ class SecurityViewModel : ViewModel() {
         }
     }
 
-    // definições
+    // definicoes
 
     private fun loadSettings() {
         viewModelScope.launch {

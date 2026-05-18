@@ -69,7 +69,7 @@ fun SettingsScreen(
             SettingsItem(Icons.Default.Email, "Email", uiState.email.ifBlank { "—" },
                 onClick = { viewModel.startChangeEmail() })
 
-            // Peso
+            // peso
             SettingsItem(
                 icon  = Icons.Default.MonitorWeight,
                 title = "Peso",
@@ -87,7 +87,7 @@ fun SettingsScreen(
                 )
             }
 
-            // Altura
+            // altura
             SettingsItem(
                 icon  = Icons.Default.Height,
                 title = "Altura",
@@ -105,7 +105,7 @@ fun SettingsScreen(
                 )
             }
 
-            // Género
+            // genero
             Card(
                 colors   = CardDefaults.cardColors(CardGray),
                 modifier = Modifier.fillMaxWidth(),
@@ -145,7 +145,7 @@ fun SettingsScreen(
             SettingsToggle(Icons.Default.Straighten, if (uiState.metricSystem) "Sistema Métrico (km/h)" else "Sistema Imperial (mph)", uiState.metricSystem) {
                 viewModel.toggleMetricSystem(it)
             }
-            // Objetivo semanal
+            // objetivo semanal
             Card(
                 colors = CardDefaults.cardColors(CardGray),
                 modifier = Modifier.fillMaxWidth(),
@@ -202,7 +202,7 @@ fun SettingsScreen(
         }
     }
 
-    // diálogo alterar password
+    // dialogo alterar password
     if (uiState.isChangingPassword) {
         var showCurrent  by remember { mutableStateOf(false) }
         var showNew      by remember { mutableStateOf(false) }
@@ -269,7 +269,7 @@ fun SettingsScreen(
         }
     }
 
-    // diálogo alterar email
+    // dialogo alterar email
     if (uiState.isChangingEmail) {
         var showPassword by remember { mutableStateOf(false) }
         Dialog(onDismissRequest = { viewModel.cancelChangeEmail() }) {
@@ -341,7 +341,7 @@ fun SettingsScreen(
         }
     }
 
-    // diálogo edição de nome
+    // dialogo edicao de nome
     if (uiState.isEditingName) {
         Dialog(onDismissRequest = { viewModel.cancelEditName() }) {
             Card(
