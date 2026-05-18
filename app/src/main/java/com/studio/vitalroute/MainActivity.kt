@@ -20,10 +20,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 class MainActivity : ComponentActivity() {
 
-    // Pede permissão de notificações em Android 13+
+    // pede permissao de notificacoes em android 13
     private val notifPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* resultado ignorado — app funciona sem notificações */ }
+    ) { /* resultado ignorado app funciona sem notificacoes */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,12 +35,12 @@ class MainActivity : ComponentActivity() {
             val authViewModel: AuthViewModel = viewModel()
             val authState by authViewModel.uiState.collectAsStateWithLifecycle()
 
-            // Ouve o estado de autenticação do Firebase em tempo real.
-            // Quando o utilizador faz login/logout, a UI atualiza automaticamente.
+            // ouve estado de autenticacao do firebase em tempo real
+            // quando o utilizador faz login ou logout a ui atualiza automaticamente
             DisposableEffect(Unit) {
                 val listener = com.google.firebase.auth.FirebaseAuth.AuthStateListener { firebaseAuth ->
-                    // Este listener é gerido pelo AuthViewModel mas aqui usamos
-                    // o estado do ViewModel que já está sincronizado
+                    // este listener e gerido pelo authviewmodel mas aqui usamos
+                    // o estado do viewmodel que ja esta sincronizado
                 }
                 Firebase.auth.addAuthStateListener(listener)
                 onDispose { Firebase.auth.removeAuthStateListener(listener) }
@@ -48,10 +48,10 @@ class MainActivity : ComponentActivity() {
 
             if (authState.isLoggedIn) {
 
-                // Utilizador autenticado — mostra a app principal
+                // utilizador autenticado mostra a app principal
                 VitalRouteNavGraph(onSignOut = { authViewModel.signOut() })
             } else {
-                // Utilizador não autenticado — mostra o ecrã de login
+                // utilizador nao autenticado mostra o ecra de login
                 LoginScreen(viewModel = authViewModel)
             }
         }

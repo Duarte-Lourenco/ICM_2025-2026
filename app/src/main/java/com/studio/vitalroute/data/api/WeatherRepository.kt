@@ -6,7 +6,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 
 class WeatherRepository {
 
-    // Instância singleton do Retrofit configurada para a Open-Meteo
+    // instancia singleton do retrofit configurada para a open meteo
     private val api: WeatherApiService = Retrofit.Builder()
         .baseUrl("https://api.open-meteo.com/")
         .addConverterFactory(GsonConverterFactory.create())
@@ -14,16 +14,16 @@ class WeatherRepository {
         .create(WeatherApiService::class.java)
 
     /**
-     * Busca o tempo atual para as coordenadas fornecidas.
-     * É uma suspend function → deve ser chamada dentro de uma coroutine.
-     * Lança exceção em caso de erro de rede.
+     * busca o tempo atual para as coordenadas fornecidas
+     * e uma suspend function deve ser chamada dentro de uma coroutine
+     * lanca excecao em caso de erro de rede
      */
     suspend fun getCurrentWeather(lat: Double, lon: Double): WeatherResponse {
         return api.getCurrentWeather(lat = lat, lon = lon)
     }
 
     /**
-     * Converte o weather_code WMO numa descrição legível.
+     * converte o weather code wmo numa descricao legivel
      * https://open-meteo.com/en/docs#weathervariables
      */
     fun weatherCodeToDescription(code: Int): String = when (code) {

@@ -278,7 +278,7 @@ private fun ActivityDetailContent(activity: Activity, useMetric: Boolean) {
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     DetailStat(
-                        label = "Elevação",
+                        label = "Subida",
                         value = "${activity.elevationM} m",
                         accent = VitalOrange
                     )

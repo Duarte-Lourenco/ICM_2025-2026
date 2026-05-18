@@ -19,9 +19,9 @@ data class CurrentWeatherData(
 interface WeatherApiService {
 
     /**
-     * Busca condições meteorológicas atuais para uma dada coordenada.
+     * busca condicoes meteorologicas atuais para uma dada coordenada
      *
-     * Exemplo de URL gerado:
+     * exemplo de url gerado
      * https://api.open-meteo.com/v1/forecast
      *   ?latitude=40.6405
      *   &longitude=-8.6568

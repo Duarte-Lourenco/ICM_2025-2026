@@ -22,7 +22,7 @@ data class AuthUiState(
     val isEmailVerificationPending: Boolean = false,
     val pendingEmail: String = "",
     val verificationEmailSent: Boolean = false,
-    // Recuperação de password
+    // recuperacao de password
     val isForgotPassword: Boolean = false,
     val forgotEmail: String = "",
     val forgotLoading: Boolean = false,
@@ -56,9 +56,16 @@ class AuthViewModel : ViewModel() {
             try {
                 auth.signInWithEmailAndPassword(email.trim(), password).await()
                 val user = auth.currentUser
-                // dev: bypass verificacao - remover antes de entregar
-                if (user != null) {
+                if (user?.isEmailVerified == true) {
                     _uiState.update { it.copy(isLoading = false, isLoggedIn = true) }
+                } else if (user != null) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isEmailVerificationPending = true,
+                            pendingEmail = user.email ?: ""
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("AuthViewModel", "signIn error [${e::class.simpleName}]: ${e.message}")
@@ -176,7 +183,16 @@ class AuthViewModel : ViewModel() {
     }
 
     fun signInAsGuest() {
-        _uiState.update { it.copy(isLoggedIn = true, error = null) }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                auth.signInAnonymously().await()
+                _uiState.update { it.copy(isLoading = false, isLoggedIn = true) }
+            } catch (e: Exception) {
+                Log.e("AuthViewModel", "signInAnonymously failed: ${e.message}")
+                _uiState.update { it.copy(isLoading = false, error = "Erro ao entrar como convidado. Verifica a ligação.") }
+            }
+        }
     }
 
     fun signOut() {

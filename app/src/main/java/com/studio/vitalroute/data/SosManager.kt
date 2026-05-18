@@ -13,18 +13,17 @@ import java.util.Locale
 object SosManager {
 
     /**
-     * Envia SMS a todos os contactos SOS.
-     * @param context   Contexto da aplicação ou do serviço
-     * @param location  Última localização GPS conhecida (pode ser null)
-     * @param localContacts  Lista de contactos locais (modo offline).
-     *                       Se vazia, tenta ir buscar ao Firestore.
+     * envia sms a todos os contactos sos
+     * @param context contexto da aplicacao ou do servico
+     * @param location ultima localizacao gps conhecida pode ser null
+     * @param localContacts lista de contactos locais modo offline se vazia tenta ir buscar ao firestore
      */
     suspend fun sendSos(
         context: Context,
         location: Location? = null,
         localContacts: List<SosContact> = emptyList()
     ) {
-        // Obtém a lista de contactos: tenta Firestore, fallback para os locais
+        // obtem lista de contactos tenta firestore fallback local
         val contacts: List<SosContact> = if (localContacts.isNotEmpty()) {
             localContacts
         } else {
@@ -56,7 +55,7 @@ object SosManager {
                     )
                 }
             } catch (_: Exception) {
-                // Não conseguiu enviar para este contacto — continua para os próximos
+                // nao conseguiu enviar para este contacto continua para os proximos
             }
         }
     }
@@ -84,9 +83,11 @@ object SosManager {
         }
 
     /**
-     * Envia SMS de tracking de localização a todos os contactos SOS.
-     * Usado pela partilha de localização em tempo real.
+     * envia sms de tracking de localizacao a todos os contactos sos
+     * usado pela partilha de localizacao em tempo real
      */
+    private val sharedRepository = FirestoreRepository()
+
     suspend fun sendLocationUpdate(
         context: Context,
         location: android.location.Location?,
@@ -94,7 +95,7 @@ object SosManager {
         isFinal: Boolean = false
     ) {
         val contacts = try {
-            FirestoreRepository()
+            sharedRepository
                 .getContactsOnce()
                 .filter { it.sosEnabled && it.phone.isNotBlank() }
         } catch (_: Exception) { emptyList() }
@@ -140,12 +141,12 @@ object SosManager {
         }
     }
 
-    /** Acesso público ao SmsManager para uso externo (ex: RecordingService para geofencing). */
+    // acesso publico ao smsmanager para uso externo ex recordingservice para geofencing
     @Suppress("DEPRECATION")
     fun getSmsManagerPublic(context: Context): SmsManager = getSmsManager(context)
 }
 
-// Modelo simples para não depender do módulo de dados completo
+// modelo simples para nao depender do modulo de dados completo
 data class SosContact(
     val name: String,
     val phone: String,

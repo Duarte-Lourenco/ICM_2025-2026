@@ -14,9 +14,9 @@ object NominatimRepository {
     data class GeoResult(val lat: Double, val lng: Double, val displayName: String)
 
     /**
-     * Geocodifica um endereço em texto livre e devolve o primeiro resultado.
-     * Devolve null se não encontrar nenhum resultado ou em caso de erro.
-     * Deve ser chamado a partir de uma coroutine.
+     * geocodifica endereco em texto livre e devolve o primeiro resultado
+     * devolve null se nao encontrar resultado ou em caso de erro
+     * deve ser chamado a partir de uma coroutine
      */
     suspend fun geocode(address: String): GeoResult? = withContext(Dispatchers.IO) {
         try {
@@ -29,7 +29,7 @@ object NominatimRepository {
                 requestMethod = "GET"
                 connectTimeout = 8_000
                 readTimeout    = 8_000
-                // Nominatim exige um User-Agent identificativo
+                // nominatim exige user agent identificativo
                 setRequestProperty("User-Agent", "VitalRoute/1.0 (pt.ua.vitalroute)")
             }
 

@@ -23,14 +23,14 @@ import kotlin.math.sqrt
 
 
 private object BleUuid {
-    // GATT standard
+    // gatt standard
     val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
-    // Environmental Sensing Service (0x181A) + Free Fall characteristic (0x2A79)
+    // environmental sensing service 0x181a mais free fall characteristic 0x2a79
     val ENV_SENSING_SERVICE: UUID = UUID.fromString("0000181a-0000-1000-8000-00805f9b34fb")
     val FREE_FALL_CHAR: UUID      = UUID.fromString("00002a79-0000-1000-8000-00805f9b34fb")
 
-    // Acceleration 3D (usado por alguns wearables)
+    // acceleration 3d usado por alguns wearables
     val ACCEL_CHAR: UUID = UUID.fromString("00002713-0000-1000-8000-00805f9b34fb")
 
     // Protocolo VitalRoute custom (para dispositivos VitalBand nativos)

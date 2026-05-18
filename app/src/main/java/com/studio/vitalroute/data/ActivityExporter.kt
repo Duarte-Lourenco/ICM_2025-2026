@@ -18,7 +18,7 @@ object ActivityExporter {
     }
     private val fileFmt = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
 
-    // exportação gpx de uma atividade
+    // exportacao gpx de uma atividade
 
     fun exportGpx(context: Context, activity: Activity): Intent {
         val typeLabel = when (activity.type) {
@@ -41,7 +41,7 @@ object ActivityExporter {
             w.write("""    <trkseg>""" + "\n")
 
             if (activity.routePoints.isNotEmpty()) {
-                // Tem pontos GPS reais — interpola elevação se disponível
+                // tem pontos gps reais interpola elevacao se disponivel
                 val elevStep = if (activity.elevationPoints.isNotEmpty() && activity.routePoints.isNotEmpty()) {
                     activity.elevationPoints.size.toDouble() / activity.routePoints.size
                 } else 0.0
@@ -62,7 +62,7 @@ object ActivityExporter {
                     }
                 }
             } else {
-                // Sem pontos GPS — gera um waypoint único com os metadados
+                // sem pontos gps gera waypoint unico com metadados
                 w.write("""      <trkpt lat="0.0" lon="0.0"><ele>${activity.elevationM}</ele>""")
                 w.write("""<time>${isoFmt.format(Date(activity.startTime))}</time></trkpt>""" + "\n")
             }
@@ -75,7 +75,7 @@ object ActivityExporter {
         return buildShareIntent(context, file, "application/gpx+xml")
     }
 
-    // exportação csv de todas as atividades
+    // exportacao csv de todas as atividades
 
     fun exportCsv(context: Context, activities: List<Activity>): Intent {
         val filename = "vitalroute_atividades_${fileFmt.format(Date())}.csv"

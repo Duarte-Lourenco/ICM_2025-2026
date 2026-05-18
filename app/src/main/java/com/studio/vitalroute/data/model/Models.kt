@@ -2,12 +2,12 @@ package com.studio.vitalroute.data.model
 
 
 /**
- * Atividade gravada (ciclismo ou corrida).
- * Guardada em: users/{uid}/activities/{activityId}
+ * atividade gravada ciclismo ou corrida
+ * guardada em users uid activities activityid
  */
 data class Activity(
     val id: String                    = "",
-    val type: String                  = "cycling",   // "cycling" | "running" | "walking"
+    val type: String                  = "cycling",   // cycling running walking
     val startTime: Long               = 0L,          // epoch ms
     val endTime: Long                 = 0L,
     val distanceKm: Double            = 0.0,
@@ -16,15 +16,15 @@ data class Activity(
     val maxSpeedKmh: Double           = 0.0,
     val elevationM: Int               = 0,
     val calories: Int                 = 0,
-    // Amostras de altitude recolhidas a cada 30 s (para curva de elevação)
+    // amostras de altitude a cada 30s para curva de elevacao
     val elevationPoints: List<Int>    = emptyList(),
-    // Pontos GPS gravados a cada ~60 s (para visualização da rota)
-    val routePoints: List<String>     = emptyList()  // formato "lat,lng"
+    // pontos gps a cada 60s para visualizacao da rota
+    val routePoints: List<String>     = emptyList()  // formato lat lng
 )
 
 /**
- * Contacto de confiança para SOS.
- * Guardado em: users/{uid}/contacts/{contactId}
+ * contacto de confianca para sos
+ * guardado em users uid contacts contactid
  */
 data class FirestoreContact(
     val id: String          = "",
@@ -36,8 +36,8 @@ data class FirestoreContact(
 )
 
 /**
- * Definições de segurança do utilizador.
- * Guardado em: users/{uid}/settings/main
+ * definicoes de seguranca do utilizador
+ * guardado em users uid settings main
  */
 data class UserSettings(
     val fallSensitivity: Float     = 0.5f,
@@ -51,8 +51,8 @@ data class UserSettings(
 )
 
 /**
- * Perfil do utilizador.
- * Guardado em: users/{uid}
+ * perfil do utilizador
+ * guardado em users uid
  */
 data class UserProfile(
     val uid: String      = "",
@@ -60,12 +60,12 @@ data class UserProfile(
     val email: String    = "",
     val weightKg: Float  = 70f,
     val heightCm: Int    = 170,
-    val gender: String   = "male"   // "male" | "female"
+    val gender: String   = "male"   // male female
 )
 
 /**
- * Zona segura configurada pelo utilizador.
- * Guardada em: users/{uid}/safeZones/{zoneId}
+ * zona segura configurada pelo utilizador
+ * guardada em users uid safezones zoneid
  */
 data class FirestoreSafeZone(
     val id: String      = "",

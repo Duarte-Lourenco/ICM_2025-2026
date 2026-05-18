@@ -52,6 +52,7 @@ data class RecordingServiceState(
     // Deteção de quedas / imobilidade
     val isSosCountdown: Boolean  = false,
     val sosCountdownRemaining: Int = 0,
+    val sosCountdownTotal: Int   = 15,
     val sosSent: Boolean         = false,
     val lastAlertLabel: String?  = null,
     // Partilha de localização em tempo real
@@ -147,10 +148,11 @@ class RecordingService : Service(), SensorEventListener {
     private val triggeredZones         = mutableSetOf<String>()  // IDs já notificados (debounce)
 
     // Amostras para gráficos (acumuladas em memória, exportadas ao parar)
-    private val elevationSamples       = mutableListOf<Int>()    // altitude a cada ~30 s
+    private val elevationSamples       = mutableListOf<Int>()    // altitude GPS real a cada ~30 s
     private val routeSamples           = mutableListOf<String>() // "lat,lng" a cada ~60 s
     private var lastElevationSampleSec = 0L   // elapsedSeconds na última amostra de elevação
     private var lastRouteSampleSec     = 0L   // elapsedSeconds na última amostra de rota
+    private var lastRawAltForProfile   = Double.NaN  // altitude GPS para o perfil
 
     // Calorias acumuladas incrementalmente (só conta quando em movimento)
     private var caloriesAccumulated    = 0.0
@@ -228,7 +230,8 @@ class RecordingService : Service(), SensorEventListener {
         elevationSamples.clear()
         routeSamples.clear()
         lastElevationSampleSec = 0L
-        lastRouteSampleSec     = 0L
+        lastRouteSampleSec     = -10L  // permite capturar o primeiro ponto ao primeiro fix GPS
+        lastRawAltForProfile   = Double.NaN
 
         _state.value = RecordingServiceState(
             isRecording  = true,
@@ -410,15 +413,18 @@ class RecordingService : Service(), SensorEventListener {
             val distKm = totalDistanceM / 1000.0
 
             // acumula ganho de elevação (só subidas reais, ignora ruído < 5 m)
-            val rawAlt = if (location.hasAltitude()) location.altitude else Double.NaN
-            if (!rawAlt.isNaN()) {
+            val rawAlt = if (location.provider == LocationManager.GPS_PROVIDER && location.hasAltitude())
+                location.altitude else Double.NaN
+            val vertOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && location.hasVerticalAccuracy())
+                location.verticalAccuracyMeters <= 20f else true
+            if (!rawAlt.isNaN() && vertOk) {
                 if (!lastAltitudeM.isNaN()) {
                     val delta = rawAlt - lastAltitudeM
-                    if (delta >= 5.0) {
+                    if (delta >= 10.0) {
                         elevationGainM += delta
                         lastAltitudeM = rawAlt
-                    } else if (delta <= -5.0) {
-                        lastAltitudeM = rawAlt  // atualiza referência em descida sem acumular
+                    } else if (delta <= -10.0) {
+                        lastAltitudeM = rawAlt
                     }
                 } else {
                     lastAltitudeM = rawAlt
@@ -446,13 +452,21 @@ class RecordingService : Service(), SensorEventListener {
                 }
             }
 
-            // amostras periódicas: elevação (30 s) e rota (60 s)
+            // amostras periódicas: elevação (30 s) e rota (10 s)
             val elapsed = _state.value.elapsedSeconds
-            if (altM > 0 && elapsed - lastElevationSampleSec >= 30L) {
-                elevationSamples.add(altM)
+            if (location.provider == LocationManager.GPS_PROVIDER
+                && location.hasAltitude()
+                && elapsed - lastElevationSampleSec >= 30L
+            ) {
+                val rawAlt = location.altitude
+                // Suaviza ruído GPS: só grava se diferença > 2m em relação à amostra anterior
+                if (lastRawAltForProfile.isNaN() || kotlin.math.abs(rawAlt - lastRawAltForProfile) >= 2.0) {
+                    lastRawAltForProfile = rawAlt
+                }
+                elevationSamples.add(lastRawAltForProfile.toInt())
                 lastElevationSampleSec = elapsed
             }
-            if (elapsed - lastRouteSampleSec >= 60L
+            if (elapsed - lastRouteSampleSec >= 10L
                 && (location.latitude != 0.0 || location.longitude != 0.0)
             ) {
                 routeSamples.add("%.6f,%.6f".format(Locale.US, location.latitude, location.longitude))
@@ -704,6 +718,7 @@ class RecordingService : Service(), SensorEventListener {
             it.copy(
                 isSosCountdown        = true,
                 sosCountdownRemaining = sosDelaySecs,
+                sosCountdownTotal     = sosDelaySecs,
                 sosSent               = false,
                 lastAlertLabel        = label
             )

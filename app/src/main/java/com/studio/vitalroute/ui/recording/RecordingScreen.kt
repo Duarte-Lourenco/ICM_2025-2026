@@ -50,6 +50,7 @@ import com.studio.vitalroute.ui.theme.*
 
 @Composable
 fun RecordingScreen(
+    onNavigateToMap: () -> Unit = {},
     viewModel: RecordingViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -82,6 +83,7 @@ fun RecordingScreen(
     if (uiState.isSosCountdown) {
         SosCountdownOverlay(
             secondsRemaining = uiState.sosCountdownRemaining,
+            totalSeconds     = uiState.sosCountdownTotal,
             label            = uiState.lastAlertLabel ?: "Alerta detetado!",
             onCancel         = { viewModel.cancelSos() }
         )
@@ -288,7 +290,7 @@ fun RecordingScreen(
                 MetricCard(
                     modifier = Modifier.weight(1f),
                     icon = Icons.Default.Terrain,
-                    label = "ELEVAÇÃO",
+                    label = "SUBIDA",
                     value = uiState.elevation,
                     unit = "m",
                     accentColor = Color(0xFF64B5F6)
@@ -304,6 +306,17 @@ fun RecordingScreen(
             }
 
             Spacer(Modifier.height(16.dp))
+
+            // card de destino (só quando não está a gravar)
+            if (!uiState.isRecording) {
+                DestinationCard(
+                    hasDestination   = uiState.hasDestination,
+                    destinationName  = uiState.destinationName,
+                    onSetDestination = onNavigateToMap,
+                    onClear          = { viewModel.clearDestination() }
+                )
+                Spacer(Modifier.height(12.dp))
+            }
 
             // mapa em tempo real (visível durante gravação ou quando há destino)
             if (uiState.isRecording || uiState.hasDestination) {
@@ -549,6 +562,7 @@ fun RecordingScreen(
 @Composable
 fun SosCountdownOverlay(
     secondsRemaining: Int,
+    totalSeconds: Int = 15,
     label: String,
     onCancel: () -> Unit
 ) {
@@ -594,7 +608,7 @@ fun SosCountdownOverlay(
             // Contador circular
             Box(contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
-                    progress = { secondsRemaining / 30f },
+                    progress = { secondsRemaining / totalSeconds.toFloat() },
                     modifier = Modifier.size(120.dp),
                     color = VitalRed,
                     strokeWidth = 8.dp,
@@ -769,6 +783,54 @@ private fun LiveTrackingMap(
                         letterSpacing = 0.5.sp,
                         modifier      = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DestinationCard(
+    hasDestination: Boolean,
+    destinationName: String,
+    onSetDestination: () -> Unit,
+    onClear: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors   = CardDefaults.cardColors(containerColor = Color(0xFF141414)),
+        shape    = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Place, null, tint = VitalOrange, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    if (hasDestination) "Destino definido" else "Destino",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+                Text(
+                    if (hasDestination) destinationName.ifBlank { "Localização marcada" }
+                    else "Define um ponto de chegada para ver a rota no mapa",
+                    color = Color.Gray,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+            }
+            if (hasDestination) {
+                IconButton(onClick = onClear, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Close, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
+                }
+            } else {
+                TextButton(onClick = onSetDestination) {
+                    Text("Definir", color = VitalOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

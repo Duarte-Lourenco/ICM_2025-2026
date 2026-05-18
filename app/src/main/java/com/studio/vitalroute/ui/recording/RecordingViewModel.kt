@@ -47,6 +47,7 @@ data class RecordingUiState(
     // SOS estado
     val isSosCountdown: Boolean   = false,
     val sosCountdownRemaining: Int = 0,
+    val sosCountdownTotal: Int    = 15,
     val sosSent: Boolean          = false,
     val lastAlertLabel: String?   = null,
     // Partilha de localização
@@ -113,6 +114,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                         calories              = s.calories.toString(),
                         isSosCountdown        = s.isSosCountdown,
                         sosCountdownRemaining = s.sosCountdownRemaining,
+                        sosCountdownTotal     = s.sosCountdownTotal,
                         sosSent               = s.sosSent,
                         lastAlertLabel        = s.lastAlertLabel,
                         isLocationSharing     = s.isLocationSharing,
@@ -176,6 +178,10 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun dismissArrival() {
         _uiState.update { it.copy(arrivedAtZone = null) }
+    }
+
+    fun clearDestination() {
+        DestinationManager.clear()
     }
 
     // link de partilha de localização
@@ -309,7 +315,9 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                             routePoints     = s.routePoints
                         )
                     )
-                } catch (_: Exception) { /* modo offline */ }
+                } catch (_: Exception) {
+                    _uiState.update { it.copy(lastAlertLabel = "Atividade não guardada (sem ligação à internet)") }
+                }
             }
         }
 
@@ -337,6 +345,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
             it.copy(
                 isSosCountdown        = true,
                 sosCountdownRemaining = sosDelaySecs,
+                sosCountdownTotal     = sosDelaySecs,
                 sosSent               = false,
                 lastAlertLabel        = "SOS manual acionado!"
             )

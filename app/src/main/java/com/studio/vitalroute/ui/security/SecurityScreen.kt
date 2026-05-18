@@ -135,7 +135,7 @@ fun SecurityScreen(
                     Text("Monitorização Contínua", color = Color.White,
                         fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                     Text(
-                        "${uiState.contacts.size} contactos · Queda: Ativa · SOS: ${uiState.sosCountdownSecs}s",
+                        "${uiState.contacts.size} contactos · ${uiState.safeZones.size} zonas · SOS: ${uiState.sosCountdownSecs}s",
                         color = Color.Gray, fontSize = 12.sp
                     )
                 }
@@ -314,7 +314,7 @@ fun SecurityScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SectionHeader("ZONAS SEGURAS")
+            SectionHeader("ZONAS SEGURAS", modifier = Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = { viewModel.openAddZoneDialog() }) {
                     Icon(Icons.Default.Add, null, tint = VitalGreen, modifier = Modifier.size(16.dp))
@@ -379,6 +379,34 @@ fun SecurityScreen(
                     enabled  = uiState.immobilityAlertEnabled,
                     onToggle = { viewModel.toggleImmobilityAlert(it) }
                 )
+                if (uiState.immobilityAlertEnabled) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 34.dp, end = 4.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Slider(
+                            value = uiState.immobilityMinutes.toFloat(),
+                            onValueChange = { viewModel.updateImmobilityMinutes(it.toInt()) },
+                            valueRange = 1f..30f,
+                            steps = 28,
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(
+                                thumbColor       = VitalGreen,
+                                activeTrackColor = VitalGreen
+                            )
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "${uiState.immobilityMinutes} min",
+                            color = VitalGreen,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(44.dp)
+                        )
+                    }
+                }
                 HorizontalDivider(color = Color(0xFF2A2A2A))
                 AlertToggleRow(
                     icon     = Icons.Default.Home,
@@ -390,8 +418,8 @@ fun SecurityScreen(
                 HorizontalDivider(color = Color(0xFF2A2A2A))
                 AlertToggleRow(
                     icon     = Icons.Default.Route,
-                    title    = "Desvio de rota",
-                    subtitle = "Alerta se sair do percurso planeado",
+                    title    = "Movimento anómalo",
+                    subtitle = "Alerta se GPS detetar velocidade ou salto anómalo",
                     enabled  = uiState.routeDeviationEnabled,
                     onToggle = { viewModel.toggleRouteDeviation(it) }
                 )

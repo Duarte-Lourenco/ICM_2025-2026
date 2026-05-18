@@ -10,6 +10,7 @@ import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import com.studio.vitalroute.data.firebase.FirestoreRepository
 import com.studio.vitalroute.data.model.Activity
+import com.studio.vitalroute.data.model.FirestoreContact
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,7 +41,8 @@ data class HomeUiState(
     val lastActivityDist: String = "—",
     val lastActivityTime: String = "—",
     val lastActivitySpeed: String = "—",
-    val lastActivityElev: String = "—"
+    val lastActivityElev: String = "—",
+    val sosContactCount: Int = 0
 )
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
@@ -56,6 +58,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         loadActivities()
         loadSettings()
         loadDeviceStatus()
+        loadSosContactCount()
     }
 
     private fun loadDeviceStatus() {
@@ -124,6 +127,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     ?: ""
                 _uiState.update { it.copy(userName = fallback) }
             }
+        }
+    }
+
+    private fun loadSosContactCount() {
+        viewModelScope.launch {
+            repository.getContacts()
+                .catch { }
+                .collect { contacts ->
+                    val count = contacts.count { it.sosEnabled }
+                    _uiState.update { it.copy(sosContactCount = count) }
+                }
         }
     }
 

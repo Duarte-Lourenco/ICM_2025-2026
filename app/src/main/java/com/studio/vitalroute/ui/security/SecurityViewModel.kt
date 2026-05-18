@@ -171,10 +171,10 @@ class SecurityViewModel : ViewModel() {
         _uiState.update { it.copy(addZoneDialog = it.addZoneDialog.copy(isSaving = true, error = null)) }
 
         viewModelScope.launch {
-            // geocoding do endereço via nominatim
-            var lat = 0.0
-            var lng = 0.0
-            if (d.address.isNotBlank()) {
+            // usa coordenadas já geocodificadas pelo utilizador; só refaz se ainda são zero
+            var lat = d.geocodedLat
+            var lng = d.geocodedLng
+            if (lat == 0.0 && lng == 0.0 && d.address.isNotBlank()) {
                 val result = NominatimRepository.geocode(d.address.trim())
                 if (result != null) {
                     lat = result.lat
@@ -429,6 +429,11 @@ class SecurityViewModel : ViewModel() {
 
     fun toggleImmobilityAlert(enabled: Boolean) {
         _uiState.update { it.copy(immobilityAlertEnabled = enabled) }
+        saveSettings()
+    }
+
+    fun updateImmobilityMinutes(value: Int) {
+        _uiState.update { it.copy(immobilityMinutes = value) }
         saveSettings()
     }
 

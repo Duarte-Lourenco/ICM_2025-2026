@@ -98,8 +98,13 @@ fun HomeScreen(navController: NavHostController, viewModel: HomeViewModel = view
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold
                     )
+                    val contactLabel = when (uiState.sosContactCount) {
+                        0    -> "Sem contactos SOS"
+                        1    -> "1 contacto SOS"
+                        else -> "${uiState.sosContactCount} contactos SOS"
+                    }
                     Text(
-                        text = "Todos os sensores ativos · 1 contacto SOS",
+                        text = "Todos os sensores ativos · $contactLabel",
                         color = Color.Gray,
                         fontSize = 12.sp
                     )

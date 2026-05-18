@@ -94,7 +94,7 @@ class FirestoreRepository {
         contactsRef().document(contactId).delete().await()
     }
 
-    // one-shot para o SosManager nao precisar de flow
+    // one shot para o sosmanager nao precisar de flow
     suspend fun getContactsOnce(): List<FirestoreContact> {
         val snapshot = contactsRef().get().await()
         return snapshot.documents.mapNotNull { it.toObject<FirestoreContact>() }
@@ -126,7 +126,7 @@ class FirestoreRepository {
     suspend fun getSafeZonesOnce(): List<FirestoreSafeZone> {
         val snapshot = safeZonesRef().get().await()
         return snapshot.documents.mapNotNull { it.toObject<FirestoreSafeZone>() }
-            .filter { it.lat != 0.0 || it.lng != 0.0 }  // só zonas com coordenadas
+            .filter { it.lat != 0.0 || it.lng != 0.0 }  // so zonas com coordenadas
     }
 
     suspend fun getZoneContactsOnce(): List<FirestoreContact> =
