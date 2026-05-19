@@ -15,12 +15,18 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,8 +51,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.studio.vitalroute.data.model.FirestoreSafeZone
 import com.studio.vitalroute.ui.components.SosSlider
 import com.studio.vitalroute.ui.theme.*
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 fun RecordingScreen(
@@ -112,12 +121,15 @@ fun RecordingScreen(
         )
     }
 
+    var mapExpanded by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(DarkBackground)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -326,7 +338,12 @@ fun RecordingScreen(
                     destinationLat      = uiState.destinationLat,
                     destinationLng      = uiState.destinationLng,
                     plannedRoutePoints  = uiState.plannedRoutePoints,
-                    isRecording         = uiState.isRecording
+                    isRecording         = uiState.isRecording,
+                    safeZones           = uiState.safeZones,
+                    routeDurationSecs   = uiState.routeDurationSecs,
+                    routeDistanceKm     = uiState.routeDistanceKm,
+                    isLoadingRoute      = uiState.isLoadingRoute,
+                    onTapToExpand       = { mapExpanded = true }
                 )
                 Spacer(Modifier.height(16.dp))
             } else {
@@ -554,6 +571,29 @@ fun RecordingScreen(
             SosSlider(onSosTriggered = { viewModel.triggerSos() })
             Spacer(Modifier.height(32.dp))
         }
+
+        // mapa expandido — overlay fora da Column, sem conflito de scroll
+        AnimatedVisibility(
+            visible  = mapExpanded,
+            modifier = Modifier.fillMaxSize(),
+            enter    = fadeIn(tween(280)) + slideInVertically(tween(330, easing = FastOutSlowInEasing)) { it },
+            exit     = fadeOut(tween(220)) + slideOutVertically(tween(270, easing = FastOutSlowInEasing)) { it }
+        ) {
+            ExpandedMapOverlay(
+                currentLat         = uiState.currentLat,
+                currentLng         = uiState.currentLng,
+                routePoints        = uiState.routePoints,
+                destinationLat     = uiState.destinationLat,
+                destinationLng     = uiState.destinationLng,
+                plannedRoutePoints = uiState.plannedRoutePoints,
+                isRecording        = uiState.isRecording,
+                safeZones          = uiState.safeZones,
+                routeDurationSecs  = uiState.routeDurationSecs,
+                routeDistanceKm    = uiState.routeDistanceKm,
+                isLoadingRoute     = uiState.isLoadingRoute,
+                onDismiss          = { mapExpanded = false }
+            )
+        }
     }
 }
 
@@ -659,10 +699,16 @@ private fun LiveTrackingMap(
     destinationLat: Double = 0.0,
     destinationLng: Double = 0.0,
     plannedRoutePoints: List<String> = emptyList(),
-    isRecording: Boolean = false
+    isRecording: Boolean = false,
+    safeZones: List<FirestoreSafeZone> = emptyList(),
+    routeDurationSecs: Int = 0,
+    routeDistanceKm: Double = 0.0,
+    isLoadingRoute: Boolean = false,
+    onTapToExpand: () -> Unit = {}
 ) {
     val hasDestination = destinationLat != 0.0 || destinationLng != 0.0
     val context = androidx.compose.ui.platform.LocalContext.current
+    val markerIconCache = remember { mutableMapOf<String, android.graphics.drawable.BitmapDrawable>() }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -683,7 +729,7 @@ private fun LiveTrackingMap(
                     }
                     MapView(ctx).apply {
                         setTileSource(liveMapTileSource())
-                        setMultiTouchControls(true)
+                        setMultiTouchControls(false)
                         controller.setZoom(if (isRecording) 17.0 else 15.0)
                         val locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
                         locationOverlay.enableMyLocation()
@@ -730,6 +776,33 @@ private fun LiveTrackingMap(
                         poly.outlinePaint.strokeCap   = android.graphics.Paint.Cap.ROUND
                         poly.outlinePaint.strokeJoin  = android.graphics.Paint.Join.ROUND
                         map.overlays.add(poly)
+                    }
+
+                    // zonas seguras — circulos e marcadores de casa
+                    map.overlays.removeAll { it is LiveZoneCircle || it is LiveZoneMarker }
+                    safeZones.forEach { zone ->
+                        if (zone.lat == 0.0 && zone.lng == 0.0) return@forEach
+                        val center = GeoPoint(zone.lat, zone.lng)
+                        val zoneArgb = try { android.graphics.Color.parseColor(zone.color) }
+                                       catch (_: Exception) { android.graphics.Color.parseColor("#FF6F00") }
+                        val circle = LiveZoneCircle().apply {
+                            points = liveCirclePoints(center, zone.radiusM.toDouble())
+                            fillPaint.color    = android.graphics.Color.argb(45,
+                                android.graphics.Color.red(zoneArgb),
+                                android.graphics.Color.green(zoneArgb),
+                                android.graphics.Color.blue(zoneArgb))
+                            outlinePaint.color       = zoneArgb
+                            outlinePaint.strokeWidth = 3f
+                        }
+                        map.overlays.add(circle)
+                        val icon = markerIconCache.getOrPut(zone.color) { liveCreateHouseMarkerIcon(context, zone.color) }
+                        val marker = LiveZoneMarker(map).apply {
+                            position  = center
+                            title     = zone.name
+                            this.icon = icon
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        }
+                        map.overlays.add(marker)
                     }
 
                     // marcador de destino
@@ -786,6 +859,257 @@ private fun LiveTrackingMap(
                     )
                 }
             }
+
+            // painel de info da rota (canto inferior esquerdo)
+            if (isLoadingRoute) {
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+                    color    = Color(0xCC111111),
+                    shape    = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier              = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(10.dp), color = VitalOrange, strokeWidth = 1.5.dp)
+                        Text("A calcular rota…", color = Color.White, fontSize = 9.sp)
+                    }
+                }
+            } else if (routeDurationSecs > 0) {
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+                    color    = Color(0xCC111111),
+                    shape    = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier              = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(routeFormatDuration(routeDurationSecs), color = VitalOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text("·", color = Color.Gray, fontSize = 10.sp)
+                        Text("${"%.1f".format(routeDistanceKm)} km", color = Color.White, fontSize = 10.sp)
+                    }
+                }
+            }
+
+            // toque abre o mapa em fullscreen (overlay fora da coluna)
+            Box(
+                modifier         = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(onClick = onTapToExpand),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Surface(
+                    modifier = Modifier.padding(bottom = 8.dp),
+                    color    = Color(0x99000000),
+                    shape    = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        "Toca para expandir",
+                        color    = Color.White,
+                        fontSize = 9.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpandedMapOverlay(
+    currentLat: Double,
+    currentLng: Double,
+    routePoints: List<String>,
+    destinationLat: Double = 0.0,
+    destinationLng: Double = 0.0,
+    plannedRoutePoints: List<String> = emptyList(),
+    isRecording: Boolean = false,
+    safeZones: List<FirestoreSafeZone> = emptyList(),
+    routeDurationSecs: Int = 0,
+    routeDistanceKm: Double = 0.0,
+    isLoadingRoute: Boolean = false,
+    onDismiss: () -> Unit
+) {
+    val hasDestination = destinationLat != 0.0 || destinationLng != 0.0
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val markerIconCache = remember { mutableMapOf<String, android.graphics.drawable.BitmapDrawable>() }
+
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0A0A))) {
+        AndroidView(
+            factory = { ctx ->
+                Configuration.getInstance().apply {
+                    userAgentValue    = ctx.packageName
+                    osmdroidBasePath  = File(ctx.cacheDir, "osmdroid")
+                    osmdroidTileCache = File(ctx.cacheDir, "osmdroid/tiles")
+                }
+                MapView(ctx).apply {
+                    setTileSource(liveMapTileSource())
+                    setMultiTouchControls(true)
+                    controller.setZoom(if (isRecording) 17.0 else 15.0)
+                    val locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
+                    locationOverlay.enableMyLocation()
+                    if (isRecording) locationOverlay.enableFollowLocation()
+                    overlays.add(locationOverlay)
+                }
+            },
+            update = { map ->
+                map.overlays.removeAll { it is LivePlannedPolyline }
+                if (plannedRoutePoints.size >= 2) {
+                    val pts = plannedRoutePoints.mapNotNull { p ->
+                        val s = p.split(",")
+                        if (s.size == 2) GeoPoint(s[0].toDoubleOrNull() ?: return@mapNotNull null,
+                                                   s[1].toDoubleOrNull() ?: return@mapNotNull null)
+                        else null
+                    }
+                    if (pts.size >= 2) {
+                        val poly = LivePlannedPolyline(map)
+                        poly.setPoints(pts)
+                        poly.outlinePaint.color       = android.graphics.Color.parseColor("#1565C0")
+                        poly.outlinePaint.strokeWidth = 10f
+                        poly.outlinePaint.alpha       = 160
+                        poly.outlinePaint.strokeCap   = android.graphics.Paint.Cap.ROUND
+                        poly.outlinePaint.strokeJoin  = android.graphics.Paint.Join.ROUND
+                        map.overlays.add(1, poly)
+                    }
+                }
+                map.overlays.removeAll { it is Polyline && it !is LivePlannedPolyline }
+                val coords = routePoints.mapNotNull { p ->
+                    val s = p.split(",")
+                    if (s.size == 2) GeoPoint(s[0].toDoubleOrNull() ?: return@mapNotNull null,
+                                               s[1].toDoubleOrNull() ?: return@mapNotNull null)
+                    else null
+                }
+                if (coords.size >= 2) {
+                    val poly = Polyline(map)
+                    poly.setPoints(coords)
+                    poly.outlinePaint.color       = android.graphics.Color.parseColor("#4CAF50")
+                    poly.outlinePaint.strokeWidth = 12f
+                    poly.outlinePaint.alpha       = 210
+                    poly.outlinePaint.strokeCap   = android.graphics.Paint.Cap.ROUND
+                    poly.outlinePaint.strokeJoin  = android.graphics.Paint.Join.ROUND
+                    map.overlays.add(poly)
+                }
+                // zonas seguras
+                map.overlays.removeAll { it is LiveZoneCircle || it is LiveZoneMarker }
+                safeZones.forEach { zone ->
+                    if (zone.lat == 0.0 && zone.lng == 0.0) return@forEach
+                    val center = GeoPoint(zone.lat, zone.lng)
+                    val zoneArgb = try { android.graphics.Color.parseColor(zone.color) }
+                                   catch (_: Exception) { android.graphics.Color.parseColor("#FF6F00") }
+                    val circle = LiveZoneCircle().apply {
+                        points = liveCirclePoints(center, zone.radiusM.toDouble())
+                        fillPaint.color    = android.graphics.Color.argb(45,
+                            android.graphics.Color.red(zoneArgb),
+                            android.graphics.Color.green(zoneArgb),
+                            android.graphics.Color.blue(zoneArgb))
+                        outlinePaint.color       = zoneArgb
+                        outlinePaint.strokeWidth = 3f
+                    }
+                    map.overlays.add(circle)
+                    val icon = markerIconCache.getOrPut(zone.color) { liveCreateHouseMarkerIcon(context, zone.color) }
+                    val marker = LiveZoneMarker(map).apply {
+                        position  = center
+                        title     = zone.name
+                        this.icon = icon
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    }
+                    map.overlays.add(marker)
+                }
+                map.overlays.removeAll { it is LiveDestMarker }
+                if (hasDestination) {
+                    val m = LiveDestMarker(map)
+                    m.position = GeoPoint(destinationLat, destinationLng)
+                    m.title    = "Destino"
+                    m.icon     = createDestinationMarkerIcon(context)
+                    m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    map.overlays.add(m)
+                }
+                if (hasDestination && !isRecording && currentLat == 0.0 && currentLng == 0.0) {
+                    map.controller.setCenter(GeoPoint(destinationLat, destinationLng))
+                }
+                map.invalidate()
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // painel de rota estilo google maps
+        if (isLoadingRoute || routeDurationSecs > 0) {
+            Surface(
+                modifier        = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 84.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                color           = Color(0xF0111111),
+                shape           = RoundedCornerShape(16.dp),
+                shadowElevation = 8.dp
+            ) {
+                if (isLoadingRoute) {
+                    Row(
+                        modifier              = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = VitalOrange, strokeWidth = 2.dp)
+                        Text("A calcular rota…", color = Color.White, fontSize = 14.sp)
+                    }
+                } else {
+                    val arrivalCal = java.util.Calendar.getInstance().apply {
+                        add(java.util.Calendar.SECOND, routeDurationSecs)
+                    }
+                    val arrivalStr = "%02d:%02d".format(
+                        arrivalCal.get(java.util.Calendar.HOUR_OF_DAY),
+                        arrivalCal.get(java.util.Calendar.MINUTE)
+                    )
+                    Row(
+                        modifier              = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 14.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                routeFormatDuration(routeDurationSecs),
+                                color      = VitalOrange,
+                                fontSize   = 22.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                "${"%.1f".format(routeDistanceKm)} km  ·  Chega às $arrivalStr",
+                                color    = Color.Gray,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Icon(Icons.Default.LocationOn, null, tint = VitalOrange, modifier = Modifier.size(28.dp))
+                    }
+                }
+            }
+        }
+
+        Surface(
+            onClick  = onDismiss,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp),
+            color           = Color(0xCC111111),
+            shape           = RoundedCornerShape(14.dp),
+            shadowElevation = 6.dp
+        ) {
+            Row(
+                modifier              = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                Text("Recolher mapa", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
         }
     }
 }
@@ -838,7 +1162,52 @@ private fun DestinationCard(
     }
 }
 
+private fun routeFormatDuration(secs: Int): String {
+    val m = secs / 60
+    return if (m < 60) "$m min" else "${m / 60}h ${m % 60}m"
+}
+
 private class LivePlannedPolyline(map: MapView) : Polyline(map)
+private class LiveZoneCircle : Polygon()
+private class LiveZoneMarker(map: MapView) : Marker(map)
+
+private fun liveCirclePoints(center: org.osmdroid.util.GeoPoint, radiusM: Double): List<org.osmdroid.util.GeoPoint> {
+    val latRad = Math.toRadians(center.latitude)
+    return (0..36).map { i ->
+        val angle = Math.toRadians(i * 10.0)
+        val dLat  = (radiusM / 111_000.0) * cos(angle)
+        val dLon  = (radiusM / (111_000.0 * cos(latRad))) * sin(angle)
+        org.osmdroid.util.GeoPoint(center.latitude + dLat, center.longitude + dLon)
+    }
+}
+
+private fun liveCreateHouseMarkerIcon(context: android.content.Context, colorHex: String = "#FF6F00"): android.graphics.drawable.BitmapDrawable {
+    val size = 80
+    val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val parsedColor = try { android.graphics.Color.parseColor(colorHex) }
+                      catch (_: Exception) { android.graphics.Color.parseColor("#FF6F00") }
+    val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = parsedColor; style = android.graphics.Paint.Style.FILL
+    }
+    canvas.drawCircle(size / 2f, size / 2f, size / 2f, bgPaint)
+    val housePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE; style = android.graphics.Paint.Style.FILL
+    }
+    val roof = android.graphics.Path().apply {
+        moveTo(size * 0.50f, size * 0.14f)
+        lineTo(size * 0.12f, size * 0.50f)
+        lineTo(size * 0.88f, size * 0.50f)
+        close()
+    }
+    canvas.drawPath(roof, housePaint)
+    canvas.drawRect(size * 0.22f, size * 0.47f, size * 0.78f, size * 0.82f, housePaint)
+    val doorPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = parsedColor; style = android.graphics.Paint.Style.FILL
+    }
+    canvas.drawRect(size * 0.38f, size * 0.60f, size * 0.62f, size * 0.82f, doorPaint)
+    return android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
+}
 private class LiveDestMarker(map: MapView) : Marker(map)
 
 private fun createDestinationMarkerIcon(context: android.content.Context): android.graphics.drawable.BitmapDrawable {

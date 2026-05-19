@@ -11,11 +11,13 @@ import com.studio.vitalroute.data.DestinationManager
 import com.studio.vitalroute.data.SosManager
 import com.studio.vitalroute.data.firebase.FirestoreRepository
 import com.studio.vitalroute.data.model.Activity
+import com.studio.vitalroute.data.model.FirestoreSafeZone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.update
@@ -64,7 +66,11 @@ data class RecordingUiState(
     val destinationLat: Double = 0.0,
     val destinationLng: Double = 0.0,
     val destinationName: String = "",
-    val plannedRoutePoints: List<String> = emptyList()
+    val plannedRoutePoints: List<String> = emptyList(),
+    val safeZones: List<FirestoreSafeZone> = emptyList(),
+    val routeDurationSecs: Int = 0,
+    val routeDistanceKm: Double = 0.0,
+    val isLoadingRoute: Boolean = false
 )
 
 
@@ -79,6 +85,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private var manualSosJob: Job?  = null
     private var routeFetchJob: Job? = null
     private var autoStopHandled     = false
+    private var prevServiceSosSent  = false
 
     // definicoes carregadas do firestore para passar ao servico
     private var fallSensitivity        = 0.6f
@@ -99,9 +106,15 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                     autoStopHandled = true
                     stopRecording()
                 }
+                // sosSent: só propagar quando é uma nova transição false→true
+                // Se o servico mantém sosSent=true entre ticks mas o utilizador já dispensou,
+                // não re-mostrar o dialogo
+                val isNewSosSent = s.sosSent && !prevServiceSosSent
+                prevServiceSosSent = s.sosSent
+
                 val metric = useMetric
-                _uiState.update {
-                    it.copy(
+                _uiState.update { ui ->
+                    ui.copy(
                         isRecording           = s.isRecording,
                         elapsedTime           = formatTime(s.elapsedSeconds),
                         distance              = if (metric) "%.2f".format(s.distanceKm)
@@ -115,7 +128,11 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                         isSosCountdown        = s.isSosCountdown,
                         sosCountdownRemaining = s.sosCountdownRemaining,
                         sosCountdownTotal     = s.sosCountdownTotal,
-                        sosSent               = s.sosSent,
+                        sosSent               = when {
+                            isNewSosSent -> true       // nova transição: mostrar dialogo
+                            !s.sosSent   -> false      // servico limpou: esconder
+                            else         -> ui.sosSent // servico ainda true mas já dispensado: manter estado
+                        },
                         lastAlertLabel        = s.lastAlertLabel,
                         isLocationSharing     = s.isLocationSharing,
                         arrivedAtZone         = s.arrivedAtZone,
@@ -137,7 +154,22 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                         destinationName = dest?.name ?: ""
                     )
                 }
+                // pre-fetch da rota mal o destino é definido — sem esperar pelo GPS
+                if (dest != null) {
+                    val loc = getLastKnownLocation()
+                    if (loc != null) {
+                        _uiState.update { it.copy(isLoadingRoute = true, routeDurationSecs = 0, routeDistanceKm = 0.0) }
+                        fetchPlannedRoute(loc.first, loc.second, dest.lat, dest.lng, _uiState.value.activityType)
+                    }
+                }
             }
+        }
+
+        // carrega zonas seguras para mostrar no mapa de gravacao
+        viewModelScope.launch {
+            repository.getSafeZones()
+                .catch { }
+                .collect { zones -> _uiState.update { it.copy(safeZones = zones) } }
         }
 
         // carrega definicoes de seguranca para usar ao iniciar a gravacao
@@ -182,6 +214,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun clearDestination() {
         DestinationManager.clear()
+        _uiState.update { it.copy(routeDurationSecs = 0, routeDistanceKm = 0.0, isLoadingRoute = false) }
     }
 
     // link de partilha de localizacao
@@ -217,13 +250,23 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectActivityType(type: ActivityType) {
         if (!_uiState.value.isRecording) {
             _uiState.update { it.copy(activityType = type) }
+            // recalcula rota com novo tipo de atividade se houver destino
+            val dest = DestinationManager.destination.value
+            if (dest != null) {
+                val loc = getLastKnownLocation()
+                if (loc != null) {
+                    _uiState.update { it.copy(isLoadingRoute = true, routeDurationSecs = 0, routeDistanceKm = 0.0) }
+                    fetchPlannedRoute(loc.first, loc.second, dest.lat, dest.lng, type)
+                }
+            }
         }
     }
 
     // iniciar gravacao
 
     fun startRecording() {
-        autoStopHandled = false
+        autoStopHandled    = false
+        prevServiceSosSent = false
         _uiState.update { it.copy(plannedRoutePoints = emptyList()) }
         val state = _uiState.value
         val type  = state.activityType
@@ -248,14 +291,15 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         }
         ctx.startForegroundService(intent)
 
-        // se houver destino aguarda o primeiro fix gps e obtem a rota
-        if (dest != null) {
+        // se houver destino e a rota ainda não foi calculada, tenta agora com localização disponível
+        if (dest != null && _uiState.value.routeDurationSecs == 0) {
             routeFetchJob?.cancel()
             routeFetchJob = viewModelScope.launch {
-                RecordingService.state
-                    .filter { it.isRecording && (it.currentLat != 0.0 || it.currentLng != 0.0) }
-                    .take(1)
-                    .collect { s -> fetchPlannedRoute(s.currentLat, s.currentLng, dest.lat, dest.lng, type) }
+                val loc = getLastKnownLocation()
+                if (loc != null) {
+                    _uiState.update { it.copy(isLoadingRoute = true) }
+                    fetchPlannedRoute(loc.first, loc.second, dest.lat, dest.lng, type)
+                }
             }
         }
     }
@@ -278,29 +322,62 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                     .format(Locale.US, startLng, startLat, destLng, destLat)
 
                 val body = withContext(Dispatchers.IO) {
-                    runCatching { URL(url).readText() }.getOrNull()
-                } ?: return@launch
+                    runCatching {
+                        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                        conn.connectTimeout = 8_000
+                        conn.readTimeout    = 8_000
+                        conn.inputStream.bufferedReader().readText()
+                    }.getOrNull()
+                }
+                if (body == null) {
+                    _uiState.update { it.copy(isLoadingRoute = false) }
+                    return@launch
+                }
 
                 val routes = JSONObject(body).optJSONArray("routes") ?: return@launch
                 if (routes.length() == 0) return@launch
-                val coords = routes.getJSONObject(0)
-                    .getJSONObject("geometry")
-                    .getJSONArray("coordinates")
+                val route      = routes.getJSONObject(0)
+                val distanceKm = route.optDouble("distance", 0.0) / 1000.0
 
+                // duração ajustada ao tipo de atividade
+                val durationSecs = when (type) {
+                    ActivityType.RUNNING -> (distanceKm / 10.0 * 3600).toInt()  // 10 km/h
+                    ActivityType.WALKING -> route.optDouble("duration", 0.0).toInt()  // ~5 km/h (OSRM foot)
+                    ActivityType.CYCLING -> route.optDouble("duration", 0.0).toInt()  // OSRM bike
+                }
+
+                val coords = route.getJSONObject("geometry").getJSONArray("coordinates")
                 val points = (0 until coords.length()).map { i ->
                     val pair = coords.getJSONArray(i)
                     "%.6f,%.6f".format(Locale.US, pair.getDouble(1), pair.getDouble(0))
                 }
-                _uiState.update { it.copy(plannedRoutePoints = points) }
+                _uiState.update {
+                    it.copy(
+                        plannedRoutePoints = points,
+                        routeDurationSecs  = durationSecs,
+                        routeDistanceKm    = distanceKm,
+                        isLoadingRoute     = false
+                    )
+                }
             } catch (_: Exception) {
-                // sem internet ou osrm indisponivel sem rota planeada
+                _uiState.update { it.copy(isLoadingRoute = false) }
             }
         }
     }
 
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun getLastKnownLocation(): Pair<Double, Double>? = try {
+        val lm = ctx.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
+        val loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+            ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+        if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0))
+            Pair(loc.latitude, loc.longitude)
+        else null
+    } catch (_: Exception) { null }
+
     fun stopRecording() {
         routeFetchJob?.cancel()
-        _uiState.update { it.copy(plannedRoutePoints = emptyList()) }
+        _uiState.update { it.copy(plannedRoutePoints = emptyList(), routeDurationSecs = 0, routeDistanceKm = 0.0, isLoadingRoute = false) }
         val s = RecordingService.state.value
 
         if (s.elapsedSeconds >= 10) {

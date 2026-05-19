@@ -318,6 +318,8 @@ class RecordingService : Service(), SensorEventListener {
 
     private fun cancelSos() {
         sosJob?.cancel()
+        // repor o timer de imobilidade para evitar re-disparo imediato
+        lastMovementTime = System.currentTimeMillis()
         _state.update {
             it.copy(
                 isSosCountdown        = false,
@@ -707,9 +709,9 @@ class RecordingService : Service(), SensorEventListener {
                 val thresholdMs = immobilityMinutes * 60_000L
 
                 if (inactiveMs >= thresholdMs && _state.value.elapsedSeconds > 60) {
+                    // repor o timer agora para que o proximo ciclo nao re-dispare
+                    lastMovementTime = System.currentTimeMillis()
                     triggerSosCountdown("Imobilidade detetada! A enviar SOS em...")
-                    // depois de acionar espera o dobro do tempo configurado
-                    delay(thresholdMs * 2)
                 }
             }
         }
