@@ -57,9 +57,10 @@ data class RecordingServiceState(
     val lastAlertLabel: String?  = null,
     // partilha de localizacao em tempo real
     val isLocationSharing: Boolean = false,
-    // geofencing chegada a zona segura
-    val arrivedAtZone: String?  = null,
-    val autoStopped: Boolean    = false,
+    // geofencing chegada a zona segura ou destino
+    val arrivedAtZone: String?       = null,
+    val autoStopped: Boolean         = false,
+    val arrivedAtDestination: Boolean = false,
     // coordenadas gps atuais para link de partilha
     val currentLat: Double = 0.0,
     val currentLng: Double = 0.0,
@@ -90,6 +91,10 @@ class RecordingService : Service(), SensorEventListener {
         const val EXTRA_LOCATION_SHARING        = "location_sharing"       // boolean
         const val EXTRA_ARRIVAL_ALERT_ENABLED   = "arrival_alert_enabled"  // boolean
         const val EXTRA_WEIGHT_KG               = "weight_kg"              // float
+        const val EXTRA_DEST_ENABLED            = "dest_enabled"           // boolean
+        const val EXTRA_DEST_LAT                = "dest_lat"               // double
+        const val EXTRA_DEST_LNG                = "dest_lng"               // double
+        const val EXTRA_DEST_RADIUS             = "dest_radius"            // int (metros)
 
         // notificacao de chegada a zona segura
         const val CHANNEL_ARRIVAL_ID    = "vitalroute_arrival"
@@ -142,10 +147,17 @@ class RecordingService : Service(), SensorEventListener {
     private var locationSharingSmsSent    = false  // evita enviar sms inicial antes de ter gps
     private val firestoreRepository       = FirestoreRepository()
 
-    // geofencing
+    // geofencing zonas seguras
     private var arrivalAlertEnabled    = false
     private val safeZones              = mutableListOf<FirestoreSafeZone>()
     private val triggeredZones         = mutableSetOf<String>()  // ids ja notificados debounce
+
+    // deteção de chegada ao destino
+    private var destEnabled   = false
+    private var destLat       = 0.0
+    private var destLng       = 0.0
+    private var destRadiusM   = 150
+    private var destTriggered = false
 
     // amostras para graficos acumuladas em memoria exportadas ao parar
     private val elevationSamples       = mutableListOf<Int>()    // altitude gps real a cada 30s
@@ -199,6 +211,10 @@ class RecordingService : Service(), SensorEventListener {
                 locationSharingEnabled = intent.getBooleanExtra(EXTRA_LOCATION_SHARING, false)
                 arrivalAlertEnabled    = intent.getBooleanExtra(EXTRA_ARRIVAL_ALERT_ENABLED, false)
                 userWeightKg           = intent.getFloatExtra(EXTRA_WEIGHT_KG, 70f).toDouble()
+                destEnabled            = intent.getBooleanExtra(EXTRA_DEST_ENABLED, false)
+                destLat                = intent.getDoubleExtra(EXTRA_DEST_LAT, 0.0)
+                destLng                = intent.getDoubleExtra(EXTRA_DEST_LNG, 0.0)
+                destRadiusM            = intent.getIntExtra(EXTRA_DEST_RADIUS, 150)
                 startRecording()
             }
             ACTION_STOP      -> stopRecording()
@@ -227,6 +243,7 @@ class RecordingService : Service(), SensorEventListener {
         totalDistanceM        = 0.0
         lastLocation          = null
         lastMovementTime      = now
+        destTriggered         = false
         elevationSamples.clear()
         routeSamples.clear()
         lastElevationSampleSec = 0L
@@ -292,7 +309,9 @@ class RecordingService : Service(), SensorEventListener {
         stopSelf()
         safeZones.clear()
         triggeredZones.clear()
-        _state.update { it.copy(isRecording = false, isLocationSharing = false, arrivedAtZone = null, autoStopped = false) }
+        destEnabled   = false
+        destTriggered = false
+        _state.update { it.copy(isRecording = false, isLocationSharing = false, arrivedAtZone = null, autoStopped = false, arrivedAtDestination = false) }
     }
 
     // sos cancelar botao estou bem
@@ -491,6 +510,11 @@ class RecordingService : Service(), SensorEventListener {
             if (arrivalAlertEnabled && safeZones.isNotEmpty()) {
                 checkGeofenceArrival(location)
             }
+
+            // verificar chegada ao destino
+            if (destEnabled && !destTriggered) {
+                checkDestinationArrival(location)
+            }
         }
 
         override fun onProviderEnabled(provider: String) {}
@@ -514,6 +538,59 @@ class RecordingService : Service(), SensorEventListener {
                 triggeredZones.add(zone.id)
                 onArrivalAtZone(zone)
             }
+        }
+    }
+
+    private fun checkDestinationArrival(location: android.location.Location) {
+        val destLocation = android.location.Location("dest").apply {
+            latitude  = destLat
+            longitude = destLng
+        }
+        if (location.distanceTo(destLocation) <= destRadiusM) {
+            destTriggered = true
+            onArrivalAtDestination()
+        }
+    }
+
+    private fun onArrivalAtDestination() {
+        val destName = com.studio.vitalroute.data.DestinationManager.destination.value
+            ?.name?.takeIf { it.isNotBlank() } ?: "Destino"
+
+        _state.update { it.copy(arrivedAtZone = destName, autoStopped = true, arrivedAtDestination = true) }
+
+        // limpar destino do mapa imediatamente
+        com.studio.vitalroute.data.DestinationManager.clear()
+
+        // notificacao push
+        val notifText = if (destName != "Destino") "Chegaste a $destName." else "Chegaste ao teu destino."
+        val notification = androidx.core.app.NotificationCompat
+            .Builder(this, CHANNEL_ARRIVAL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setContentTitle("Chegaste ao destino!")
+            .setContentText(notifText)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
+            .notify(NOTIF_ARRIVAL_ID + 2, notification)
+
+        // sms para contactos com zonesEnabled
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val contacts = firestoreRepository.getZoneContactsOnce()
+                val lat = "%.5f".format(Locale.US, lastKnownLocation?.latitude ?: 0.0)
+                val lon = "%.5f".format(Locale.US, lastKnownLocation?.longitude ?: 0.0)
+                val suffix = if (destName != "Destino") " ($destName)" else ""
+                val message = "VitalRoute: Chegaste ao destino$suffix!\n" +
+                    "Atividade terminada em segurança.\n" +
+                    (if (lastKnownLocation != null) "Localização: https://maps.google.com/?q=$lat,$lon\n" else "") +
+                    "-- VitalRoute --"
+                val smsManager = SosManager.getSmsManagerPublic(applicationContext)
+                contacts.forEach { contact ->
+                    try { smsManager.sendTextMessage(contact.phone, null, message, null, null) }
+                    catch (_: Exception) {}
+                }
+            } catch (_: Exception) {}
         }
     }
 

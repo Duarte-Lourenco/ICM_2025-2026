@@ -662,6 +662,7 @@ private fun LiveTrackingMap(
     isRecording: Boolean = false
 ) {
     val hasDestination = destinationLat != 0.0 || destinationLng != 0.0
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -737,7 +738,8 @@ private fun LiveTrackingMap(
                         val m = LiveDestMarker(map)
                         m.position = GeoPoint(destinationLat, destinationLng)
                         m.title    = "Destino"
-                        m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        m.icon     = createDestinationMarkerIcon(context)
+                        m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                         map.overlays.add(m)
                     }
 
@@ -838,6 +840,35 @@ private fun DestinationCard(
 
 private class LivePlannedPolyline(map: MapView) : Polyline(map)
 private class LiveDestMarker(map: MapView) : Marker(map)
+
+private fun createDestinationMarkerIcon(context: android.content.Context): android.graphics.drawable.BitmapDrawable {
+    val size   = 80
+    val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+
+    val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.parseColor("#FF6F00")
+        style = android.graphics.Paint.Style.FILL
+    }
+    canvas.drawCircle(size / 2f, size / 2f, size / 2f, bgPaint)
+
+    val fgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color       = android.graphics.Color.WHITE
+        style       = android.graphics.Paint.Style.FILL
+        strokeWidth = size * 0.08f
+        strokeCap   = android.graphics.Paint.Cap.ROUND
+    }
+    canvas.drawRect(size * 0.46f, size * 0.18f, size * 0.54f, size * 0.82f, fgPaint)
+    canvas.drawRect(size * 0.18f, size * 0.46f, size * 0.82f, size * 0.54f, fgPaint)
+
+    val holePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.parseColor("#FF6F00")
+        style = android.graphics.Paint.Style.FILL
+    }
+    canvas.drawCircle(size / 2f, size / 2f, size * 0.12f, holePaint)
+
+    return android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
+}
 
 private fun liveMapTileSource(): OnlineTileSourceBase =
     object : OnlineTileSourceBase(

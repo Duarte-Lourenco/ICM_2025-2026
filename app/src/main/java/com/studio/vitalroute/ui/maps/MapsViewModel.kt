@@ -64,7 +64,9 @@ data class MapsUiState(
     val showDestinationSheet: Boolean = false,
     val pendingDestLat: Double = 0.0,
     val pendingDestLng: Double = 0.0,
-    val activeDestination: Destination? = null
+    val pendingDestRadius: Int = 150,
+    val activeDestination: Destination? = null,
+    val showDestinationInfo: Boolean = false
 )
 
 
@@ -217,22 +219,28 @@ class MapsViewModel : ViewModel() {
 
     fun setAsDestination() {
         val s = _uiState.value
-        DestinationManager.set(s.pendingDestLat, s.pendingDestLng)
+        DestinationManager.set(s.pendingDestLat, s.pendingDestLng, radiusM = s.pendingDestRadius)
         _uiState.update { it.copy(showDestinationSheet = false) }
     }
+
+    fun setPendingDestRadius(r: Int) { _uiState.update { it.copy(pendingDestRadius = r) } }
 
     fun dismissDestinationSheet() {
         _uiState.update { it.copy(showDestinationSheet = false) }
     }
 
     fun setZoneAsDestination(zone: FirestoreSafeZone) {
-        DestinationManager.set(zone.lat, zone.lng, zone.name)
+        DestinationManager.set(zone.lat, zone.lng, zone.name, zone.radiusM)
         _uiState.update { it.copy(selectedZone = null, showDeleteConfirm = false) }
     }
 
     fun clearDestination() {
         DestinationManager.clear()
+        _uiState.update { it.copy(showDestinationInfo = false) }
     }
+
+    fun showDestinationInfo()   { _uiState.update { it.copy(showDestinationInfo = true) } }
+    fun dismissDestinationInfo() { _uiState.update { it.copy(showDestinationInfo = false) } }
 
     fun updatePendingZoneName(name: String) { _uiState.update { it.copy(pendingZoneName = name) } }
     fun setPendingZoneRadius(r: Int)         { _uiState.update { it.copy(pendingZoneRadius = r) } }

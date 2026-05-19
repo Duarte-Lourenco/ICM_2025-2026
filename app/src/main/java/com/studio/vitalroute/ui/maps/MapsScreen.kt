@@ -157,6 +157,10 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                         title    = if (dest.name.isNotBlank()) dest.name else "Destino"
                         this.icon = icon
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        setOnMarkerClickListener { _, _ ->
+                            viewModel.showDestinationInfo()
+                            true
+                        }
                     }
                     map.overlays.add(marker)
                 }
@@ -227,37 +231,6 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                         color       = VitalGreen,
                         strokeWidth = 2.dp
                     )
-                }
-            }
-            // banner destino ativo
-            if (uiState.activeDestination != null && !uiState.isAddingZone) {
-                Spacer(Modifier.height(8.dp))
-                Surface(
-                    modifier        = Modifier.fillMaxWidth(),
-                    color           = Color(0xF0204080),
-                    shape           = RoundedCornerShape(14.dp),
-                    shadowElevation = 8.dp
-                ) {
-                    Row(
-                        modifier              = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment     = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        val dest = uiState.activeDestination
-                        Icon(Icons.Default.LocationOn, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Text(
-                            text = if (dest != null && dest.name.isNotBlank())
-                                       "Destino: ${dest.name}"
-                                   else "Destino definido",
-                            color      = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize   = 13.sp,
-                            modifier   = Modifier.weight(1f)
-                        )
-                        IconButton(onClick = viewModel::clearDestination, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        }
-                    }
                 }
             }
 
@@ -353,8 +326,10 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
             exit     = slideOutVertically(targetOffsetY = { it })
         ) {
             DestinationSheet(
-                onConfirm = viewModel::setAsDestination,
-                onDismiss = viewModel::dismissDestinationSheet
+                radius        = uiState.pendingDestRadius,
+                onRadiusChange = viewModel::setPendingDestRadius,
+                onConfirm     = viewModel::setAsDestination,
+                onDismiss     = viewModel::dismissDestinationSheet
             )
         }
 
@@ -392,6 +367,15 @@ fun MapsScreen(viewModel: MapsViewModel = viewModel()) {
                 onRadiusChange = viewModel::setPendingZoneRadius,
                 onSave       = viewModel::savePendingZone,
                 onDismiss    = viewModel::dismissZoneDialog
+            )
+        }
+
+        // dialogo de info do destino
+        if (uiState.showDestinationInfo && uiState.activeDestination != null) {
+            DestinationInfoDialog(
+                destinationName = uiState.activeDestination!!.name,
+                onRemove        = viewModel::clearDestination,
+                onDismiss       = viewModel::dismissDestinationInfo
             )
         }
     }
@@ -883,6 +867,57 @@ private fun ZoneNameDialog(
     }
 }
 
+@Composable
+private fun DestinationInfoDialog(
+    destinationName: String,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            color           = Color(0xFF1A1A1A),
+            shape           = RoundedCornerShape(20.dp),
+            shadowElevation = 12.dp
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Default.LocationOn, null, tint = VitalOrange, modifier = Modifier.size(22.dp))
+                    Text("Destino", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                }
+
+                if (destinationName.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(destinationName, color = Color.Gray, fontSize = 13.sp, lineHeight = 18.sp)
+                }
+
+                Spacer(Modifier.height(20.dp))
+                HorizontalDivider(color = Color(0xFF2A2A2A))
+                Spacer(Modifier.height(16.dp))
+
+                Button(
+                    onClick  = onRemove,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape    = RoundedCornerShape(12.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F), contentColor = Color.White)
+                ) {
+                    Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Remover destino", fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Fechar", color = Color.Gray, fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}
+
 // classes de overlay para zonas e destino para identificar e remover seletivamente
 
 private class ZoneCircle : Polygon()
@@ -893,6 +928,8 @@ private class DestinationMarker(map: MapView) : Marker(map)
 
 @Composable
 private fun DestinationSheet(
+    radius: Int,
+    onRadiusChange: (Int) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -914,14 +951,40 @@ private fun DestinationSheet(
                     verticalAlignment     = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Default.LocationOn, null, tint = Color(0xFF64B5F6), modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.LocationOn, null, tint = VitalOrange, modifier = Modifier.size(20.dp))
                     Text("Ponto selecionado", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Default.Close, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
+            HorizontalDivider(color = Color(0xFF2A2A2A))
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                Text("Raio de chegada", color = Color.Gray, fontSize = 12.sp)
+                Text("$radius m", color = VitalOrange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(4.dp))
+            Slider(
+                value         = radius.toFloat(),
+                onValueChange = { onRadiusChange(it.toInt()) },
+                valueRange    = 25f..500f,
+                colors        = SliderDefaults.colors(
+                    thumbColor         = VitalOrange,
+                    activeTrackColor   = VitalOrange,
+                    inactiveTrackColor = Color(0xFF333333)
+                )
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("25 m",  color = Color.DarkGray, fontSize = 10.sp)
+                Text("500 m", color = Color.DarkGray, fontSize = 10.sp)
+            }
+            Spacer(Modifier.height(14.dp))
             Row(
                 modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -937,7 +1000,7 @@ private fun DestinationSheet(
                 Button(
                     onClick  = onConfirm,
                     modifier = Modifier.weight(1f),
-                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF204080), contentColor = Color.White)
+                    colors   = ButtonDefaults.buttonColors(containerColor = VitalOrange, contentColor = Color.Black)
                 ) {
                     Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
@@ -955,7 +1018,7 @@ private fun createDestinationMarkerIcon(context: Context): BitmapDrawable {
     val canvas = Canvas(bitmap)
 
     val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.parseColor("#1565C0")
+        color = android.graphics.Color.parseColor("#FF6F00")
         style = Paint.Style.FILL
     }
     canvas.drawCircle(size / 2f, size / 2f, size / 2f, bgPaint)
@@ -971,7 +1034,7 @@ private fun createDestinationMarkerIcon(context: Context): BitmapDrawable {
     canvas.drawRect(size * 0.18f, size * 0.46f, size * 0.82f, size * 0.54f, fgPaint)
     // circulo central
     val holePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.parseColor("#1565C0")
+        color = android.graphics.Color.parseColor("#FF6F00")
         style = Paint.Style.FILL
     }
     canvas.drawCircle(size / 2f, size / 2f, size * 0.12f, holePaint)

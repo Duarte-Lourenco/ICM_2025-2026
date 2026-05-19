@@ -94,7 +94,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         // observa o estado do servico em tempo real
         viewModelScope.launch {
             RecordingService.state.collect { s ->
-                // chegada automatica a zona segura para gravacao
+                // chegada automatica a zona segura ou destino — para a gravacao
                 if (s.autoStopped && s.isRecording && !autoStopHandled) {
                     autoStopHandled = true
                     stopRecording()
@@ -227,6 +227,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(plannedRoutePoints = emptyList()) }
         val state = _uiState.value
         val type  = state.activityType
+        val dest  = DestinationManager.destination.value
         val intent = Intent(ctx, RecordingService::class.java).apply {
             action = RecordingService.ACTION_START
             putExtra(RecordingService.EXTRA_ACTIVITY_TYPE,           type.key)
@@ -238,11 +239,16 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
             putExtra(RecordingService.EXTRA_LOCATION_SHARING,        state.locationSharingEnabled)
             putExtra(RecordingService.EXTRA_ARRIVAL_ALERT_ENABLED,   arrivalAlertEnabled)
             putExtra(RecordingService.EXTRA_WEIGHT_KG,               userWeightKg)
+            if (dest != null) {
+                putExtra(RecordingService.EXTRA_DEST_ENABLED, true)
+                putExtra(RecordingService.EXTRA_DEST_LAT,     dest.lat)
+                putExtra(RecordingService.EXTRA_DEST_LNG,     dest.lng)
+                putExtra(RecordingService.EXTRA_DEST_RADIUS,  dest.radiusM)
+            }
         }
         ctx.startForegroundService(intent)
 
         // se houver destino aguarda o primeiro fix gps e obtem a rota
-        val dest = DestinationManager.destination.value
         if (dest != null) {
             routeFetchJob?.cancel()
             routeFetchJob = viewModelScope.launch {
